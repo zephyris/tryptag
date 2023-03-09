@@ -1,1 +1,1 @@
-from .tryptag import fetch_gene_list, data_cache_path, gene_list, fetch_data, check_data, open_field, open_cell
+from .tryptag import TrypTag
