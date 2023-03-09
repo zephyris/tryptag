@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "tryptag"
@@ -11,10 +11,6 @@ authors = [
 description = "Python module for accessing and handling TrypTag genome-wide protein localisation project data."
 readme = "README.md"
 requires-python = ">=3.7"
-classifiers = [
-	"Programming Language :: Python :: 3",
-	"Operating System :: OS Independent"
-]
 
 [project.urls]
 "Homepage" = "https://github.com/zephyris/tryptag"
