@@ -1,6 +1,6 @@
 # tryptag
 `tryptag` is a python module for accessing and handling [TrypTag](http://tryptag.org) genome-wide protein localisation project data.
-Its primary intended use is for easy access to data for automated image analysis.
+Its primary intended use is for easy access to image data for automated image analysis.
 
 ## Installation
 Install (or install an updated version) using `pip`:
@@ -37,7 +37,7 @@ phase, mng, dna, phasethreshold, dnathreshold = tryptag.open_field(gene_id, term
 ```
 
 The cells in the phase threshold image are indexed and can be opened individually.
-To open a specific cell:
+To open a specific cell in a field:
 
 ```
 phase, mng, dna, phasethreshold, dnathreshold = tryptag.open_cell(gene_id, terminus, field, cell)
@@ -45,7 +45,7 @@ phase, mng, dna, phasethreshold, dnathreshold = tryptag.open_cell(gene_id, termi
 
 Opened images are `numpy` `ndarray` objects, as used by `scikit-image`.
 
-Bear in mind that accessing a nonexistant gene id, tagging terminus, field and cell will give `KeyError` errors. For example:
+Bear in mind that accessing a nonexistant gene id, tagging terminus, field or cell will give `KeyError` errors. For example:
 
 ```
 gene_id = "Tb927.not.arealgeneid"
@@ -59,17 +59,19 @@ except:
     print("gene id, terminus or field not found")
 ```
 
-You can access the `tryptag.gene_list` dict for more intelligent iteration. To iterate through all cells for all gene ids and termini that exist:
+You can access the `tryptag.gene_list` dict for more intelligent iteration. To iterate through all cells for all gene ids and termini that exist, ie. automated analysis of the entire ~5,000,000 cell dataset:
+
 ```
 tryptag.fetch_gene_list()
 termini = ["n", "c"]
 for gene_id in tryptag.gene_list:
     for terminus in termini:
-        tryptag.fetch_data(gene_id, terminus)
-        for field in range(len(tryptag.gene_list[gene_id][terminus]["cells"])):
-            for cell in range(len(tryptag.gene_list[gene_id][terminus]["cells"][field])):
-                [pha, mng, dna, pth, dth] = tryptag.open_cell(gene_id, terminus, field, cell)
-                # do your analysis here
+        if terminus in tryptag.gene_list[gene_id]:
+            tryptag.fetch_data(gene_id, terminus)
+            for field in range(len(tryptag.gene_list[gene_id][terminus]["cells"])):
+                for cell in range(len(tryptag.gene_list[gene_id][terminus]["cells"][field])):
+                    [pha, mng, dna, pth, dth] = tryptag.open_cell(gene_id, terminus, field, cell)
+                    # do your analysis here
 ```
 
 ## Full guide
@@ -139,7 +141,7 @@ It then downloads and decompresses the data to the `data_cache_path` directory.
 This will take a long time, to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~20 Tb.
 
 ```
-fetch_data("Tb927.7.1920", "n")
+tryptag.fetch_data("Tb927.7.1920", "n")
 ```
 
 This will give a `KeyError` error if there is no data for that terminus. To fetch, for example, image data for a list of gene ids of interest, you could use:
@@ -147,23 +149,39 @@ This will give a `KeyError` error if there is no data for that terminus. To fetc
 ```
 gene_ids = ["Tb927.7.1920", "Tb927.1.2670", "Tb927.11.1150"]
 termini = ["n", "c"]
-for gene_id in gene_id: 
+for gene_id in gene_ids: 
     if gene_id in tryptag.gene_list:
         for terminus in termini:
             if terminus in tryptag.gene_list[gene_id]:
-                fetch_data(gene_id, terminus)
+                tryptag.fetch_data(gene_id, terminus)
 ```
 
-Look through the data cache directory and you will find your desired microscopy data, in one subdirectory per tagging plate and named by gene id and tagging terminus.
+Look through the data cache directory and you will find the microscopy data, in one subdirectory per tagging plate and named by gene id and tagging terminus.
 
 ### Image analysis
 
 The primary intended use of the `tryptag` module is for easy access of specific field of view and cell images for automated image analysis. See quickstart.
 
+Microscopy data is in three image channels and two thresholded images:
+
+Image channels:
+
+1. Phase contrast (transmitted light, overall cell morphology) uint16
+2. mNG fluorescence (green fluorescence, from the tagged protein) uint32
+3. DNA stain fluorescence (blue fluorescence, using Hoechst 33342) uint16
+
+Thresholded images:
+
+1. Thresholded phase contrast (cells) uint8, 255 = object
+2. Thresholded DNA stain (nuclei and kinetoplasts - mitochondrial DNA organelles) uint8, 255 = object
+
+`open_field` and `open_cell` both return an array of images in this order.
+
 ### General tips
 
 Make sure you have enough free disk space to download, decompress and cache the image data. This is ~40 Gb for a single plate and up to ~8 Tb for the entire dataset.
-The default cache location is `_tryptag_data` within the current working directory. You can change this to any directory you wish, we recommend a scratch drive with sufficient space:
+The default cache location is `_tryptag_data` within the current working directory. You can change this to a relative or absolute path to any directory you wish - we recommend a scratch drive with sufficient space.
+Make sure this is set at the start of every script:
 
 Linux/Mac:
 ```
@@ -176,14 +194,25 @@ or Windows:
 tryptag.data_cache_path = "Z:/my/scratch/directory"
 ```
 
-Do not remove files from `data_cache_path`, `tryptag` does not check if files have been removed. You can, however, delete a whole plate directory.
+Do not remove files from `data_cache_path`. `tryptag` does not check the plate subdirectories for integrity, ie. if files have been removed. You can, however, delete a whole plate subdirectory.
 
-Do not run multiple scripts using the same `data_cache_path` as they may try to write to the same file at the same time. The exception is if all data is already cached. You can run a script to download everything:
+Do not run multiple scripts using the same `data_cache_path` as they may try to write to the same file at the same time. The exceptions are:
+
+1. If all data is already cached. You can use `fetch_all_data` to download all image data:
 
 ```
-from tryptag import TrypTag
-tryptag = TrypTag()
 tryptag.fetch_all_data()
+```
+
+2. If only one script triggers data download, and in any further scripts you manually check that data is already available before requesting any gene id/terminus combination:
+
+```
+gene_id = "Tb927.7.1920"
+terminus = "c"
+if tryptag.check_if_cached(gene_id, terminus):
+    tryptag.open_field(gene_id, terminus, 0)
+else:
+    print("Not cached, do not analyse")
 ```
 
 The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing.
@@ -191,8 +220,6 @@ Cached image data may be an older version. `tryptag` records the MD5 hash of the
 Cached data inconsistent MD5 hashes can be checked using:
 
 ```
-from tryptag import TrypTag
-tryptag = TrypTag()
 tryptag.check_data_cache()
 ```
 
@@ -204,4 +231,3 @@ tryptag = TrypTag()
 tryptag.print_status = False
 # do your analysis here
 ```
-

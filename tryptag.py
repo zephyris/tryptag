@@ -234,6 +234,22 @@ class TrypTag:
 				self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
 				self.gene_list[gene_id][terminus]["cells"] = cells.copy()
 
+	# checks if cached image data is available for gene and terminus
+	def check_if_cached(self, gene_id, terminus):
+		# False if gene_list or zenodo_index have not been loaded yet
+		if self.gene_list is None:
+			return False
+		if self.zenodo_index is None:
+			return False
+		# path for data subdirectory
+		plate = self.gene_list[gene_id][terminus]["plate"]
+		dir_path = os.path.join(self.data_cache_path, plate)
+		# False if MD5 not yet copied to data directory
+		if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
+			return False
+		# otherwise cached
+		return True
+
 	# checks data in self.data_cache_path to make sure it is the latest version
 	def check_data_cache(self):
 		import os
