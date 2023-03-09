@@ -322,7 +322,7 @@ class TrypTag:
 		crop_centre = cell_data["centre"]
 		fill_centre = cell_data["wand"]
 		# open field
-		channels = self.open_field_pillow(self, gene, terminus, field)
+		channels = self.open_field_pillow(gene, terminus, field)
 		# process phase threshold image to only have cell of interest
 		# halve image values, flood fill cell of interst, subtract 127 then double image values
 		# really need a image_change_values(min, max, v) function!
@@ -391,7 +391,7 @@ class TrypTag:
 		crop_centre = cell_data["centre"]
 		fill_centre = cell_data["wand"]
 		# open field
-		channels = self.open_field(self, gene, terminus, field)
+		channels = self.open_field(gene, terminus, field)
 		# process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
 		channels[3][channels[3] == 255] = 127
 		channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
