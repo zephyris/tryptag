@@ -3,11 +3,11 @@ class TrypTag:
 		# user setting: verbose output from accessing data
 		self.print_status = True
 
-		# user setting: path in which to cache image data (up to ~8Tb without zip file, ~16Tb with)
+		# user setting: path in which to cache image data (up to ~5 sTb without zip file, ~10 Tb with)
 		self.data_cache_path = "_tryptag_cache"
 
 		# user setting: remove zip files after download (~halves data cache size)
-		self.remove_zip_files = False
+		self.remove_zip_files = True
 
 		# variables which will contain tryptag data
 		self.gene_list = None

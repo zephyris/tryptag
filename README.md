@@ -139,7 +139,7 @@ You can fetch the data for a specific gene id and tagging terminus using `fetch_
 This looks up in which tagging plate correspond to the most recent replicate of this tagging, and the url at which to find this data.
 It then downloads and decompresses the data to the `data_cache_path` directory.
 
-This will take a long time, to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~20 Tb.
+This will take a long time, to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~10 to 20 Gb.
 
 ```
 tryptag.fetch_data("Tb927.7.1920", "n")
@@ -180,7 +180,7 @@ Thresholded images:
 
 ### General tips
 
-Make sure you have enough free disk space to download, decompress and cache the image data. This is ~40 Gb for a single plate and up to ~8 Tb for the entire dataset.
+Make sure you have enough free disk space to download, decompress and cache the image data. This is ~40 Gb for a single plate and up to ~5 Tb for the entire dataset.
 The default cache location is `_tryptag_data` within the current working directory. You can change this to a relative or absolute path to any directory you wish - we recommend a scratch drive with sufficient space.
 Make sure this is set at the start of every script:
 
@@ -196,6 +196,7 @@ tryptag.data_cache_path = "Z:/my/scratch/directory"
 ```
 
 Do not remove files from `data_cache_path`. `tryptag` does not check the plate subdirectories for integrity, ie. if files have been removed. You can, however, delete a whole plate subdirectory.
+Keyboard interrupt of either data download or zip decompression _should_ behave gracefully, leaving partial data but not preventing automatic re-download and/or decompression.
 
 Do not run multiple scripts using the same `data_cache_path` as they may try to write to the same file at the same time. The exceptions are:
 
@@ -224,7 +225,7 @@ Cached data inconsistent MD5 hashes can be checked using:
 tryptag.check_data_cache()
 ```
 
-`tryptag` gives quite verbose information about what it is currenly doing to fetch data. To silence this output set `print_status` at the start of the script before running any `tryptag` functions:
+`tryptag` gives quite verbose information about what it is currently doing to fetch data. To silence this output set `print_status` at the start of the script before running any `tryptag` functions:
 
 ```
 from tryptag import TrypTag
@@ -239,7 +240,7 @@ If you use the TrypTag data resource, please cite Billington _et al._ 2023 Natur
 We recommend including this citation in the results or methods if TrypTag was used as part of a discovery process.
 If directly using TrypTag images, please also indicate in the figure legend or similar which images are from TrypTag.
 
-If you use the `tryptag` module to access or analyse TrypTag data, please also cite this [Github repository](https://github.com/zephyris/tryptag) and the master TrypTag Zenodo deposition [doi:10.5281/zenodo.6862290](https://doi.org/10.5281/zenodo.6862290).
+If you use the `tryptag` module to access or analyse TrypTag data, please also cite this [Github repository](https://github.com/zephyris/tryptag) and the master TrypTag Zenodo deposition [doi:10.5281/zenodo.6862289](https://doi.org/10.5281/zenodo.6862289).
 
 You may also find the following papers of use:
 1. Dean _et al._ 2019 Trends Parasitol. [doi:10.1016/j.pt.2016.10.009](https://doi.org/10.1016/j.pt.2016.10.009) Project announcement, with original aims and experimental strategy.
