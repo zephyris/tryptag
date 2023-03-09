@@ -21,6 +21,8 @@ pip uninstall tryptag
 pip install numpy scikit-image progressbar
 ```
 
+## Quickstart guide
+
 To use the `tryptag` module, import the `TrypTag` class and set up an instance (normally called `tryptag`):
 
 ```
@@ -28,7 +30,6 @@ from tryptag import TrypTag
 tryptag = TrypTag()
 ```
 
-## Quickstart guide
 Microscopy data is multiple fields of view per cell line.
 To open a specific field of view of a tagged cell line, access it by gene id (as used on [TriTrypDB](http://tritrypdb.org)), tagging terminus (`n` or `c`) and field index (integer):
 
@@ -48,15 +49,15 @@ Opened images are `numpy` `ndarray` objects, as used by `scikit-image`.
 Bear in mind that accessing a nonexistant gene id, tagging terminus, field or cell will give `KeyError` errors. For example:
 
 ```
-gene_id = "Tb927.not.arealgeneid"
+gene_id = "Tb927.7.1920"
 terminus = "n"
 tryptag.fetch_data(gene_id, terminus)
-try:
-    for field in range(5):
+for field in range(5):
+    try:
         [pha, mng, dna, pth, dth] = tryptag.open_field(gene_id, terminus, field)
         # do your analysis here
-except:
-    print("gene id, terminus or field not found")
+    except:
+        print("Field not found")
 ```
 
 You can access the `tryptag.gene_list` dict for more intelligent iteration. To iterate through all cells for all gene ids and termini that exist, ie. automated analysis of the entire ~5,000,000 cell dataset:
@@ -95,7 +96,7 @@ This will print an object containing information about the tagging of this gene.
 If tagging data for a gene id does not exist then this will give a `KeyError` error. You can handle this by using:
 
 ```
-gene_id = "Tb927.7.1920"
+gene_id = "Tb927.not.arealgeneid"
 if gene_id in tryptag.gene_list:
     print(tryptag.gene_list[gene_id])
 else:
@@ -105,7 +106,7 @@ else:
 or
 
 ```
-gene_id = "Tb927.7.1920"
+gene_id = "Tb927.not.arealgeneid"
 try:
     print(tryptag.gene_list[gene_id])
 except:
