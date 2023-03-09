@@ -2,3 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+# default tryptag data cache
+_tryptag_cache/
