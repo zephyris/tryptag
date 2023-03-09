@@ -215,7 +215,7 @@ else:
     print("Not cached, cannot open")
 ```
 
-The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing.
+The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing from [Zenodo](https://zenodo.org/record/6862289).
 Cached image data may be an older version. `tryptag` records the MD5 hash of the source zip files. If the data source (Zenodo depositions) are updated, the MD5 hash will change.
 Cached data inconsistent MD5 hashes can be checked using:
 
@@ -231,3 +231,15 @@ tryptag = TrypTag()
 tryptag.print_status = False
 # do your analysis here
 ```
+
+# Citing
+
+If you use the TrypTag data resource, please cite Billington _et al._ 2023 Nature Microbiology [doi:10.1038/s41564-022-01295-6](https://doi.org/10.1038/s41564-022-01295-6).
+We recommend including this citation in the results or methods if TrypTag was used as part of a discovery process.
+If directly using TrypTag images, please also indicate in the figure legend or similar which images are from TrypTag.
+
+If you use the `tryptag` module to access or analyse TrypTag data, please also cite this [Github repository](https://github.com/zephyris/tryptag) and the master TrypTag Zenodo deposition [doi:10.5281/zenodo.6862290](https://doi.org/10.5281/zenodo.6862290).
+
+You may also find the following papers of use:
+1. Dean _et al._ 2019 Trends Parasitol. [doi:10.1016/j.pt.2016.10.009](https://doi.org/10.1016/j.pt.2016.10.009) Project announcement, with original aims and experimental strategy.
+2. Halliday _et al._ 2019 Mol. Biochem. Parasitol. [doi:10.1016/j.molbiopara.2018.12.003](https://doi.org/10.1016/j.molbiopara.2018.12.003) Describes the localisation ontology, with landmark protein examples.
