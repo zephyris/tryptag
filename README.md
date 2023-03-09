@@ -33,14 +33,14 @@ Microscopy data is multiple fields of view per cell line.
 To open a specific field of view of a tagged cell line, access it by gene id (as used on [TriTrypDB](http://tritrypdb.org)), tagging terminus (`n` or `c`) and field index (integer):
 
 ```
-phase, mng, dna, phasethreshold, dnathreshold = tryptag.open_field(gene_id, terminus, field)
+[phase, mng, dna, phasethreshold, dnathreshold] = tryptag.open_field(gene_id, terminus, field)
 ```
 
 The cells in the phase threshold image are indexed and can be opened individually.
 To open a specific cell in a field:
 
 ```
-phase, mng, dna, phasethreshold, dnathreshold = tryptag.open_cell(gene_id, terminus, field, cell)
+[phase, mng, dna, phasethreshold, dnathreshold] = tryptag.open_cell(gene_id, terminus, field, cell)
 ```
 
 Opened images are `numpy` `ndarray` objects, as used by `scikit-image`.
@@ -198,7 +198,7 @@ Do not remove files from `data_cache_path`. `tryptag` does not check the plate s
 
 Do not run multiple scripts using the same `data_cache_path` as they may try to write to the same file at the same time. The exceptions are:
 
-1. If all data is already cached. You can use `fetch_all_data` to download all image data:
+1. If all data is already cached. You can use `fetch_all_data` to download all image data (this will probably take more than one week!):
 
 ```
 tryptag.fetch_all_data()
@@ -210,9 +210,9 @@ tryptag.fetch_all_data()
 gene_id = "Tb927.7.1920"
 terminus = "c"
 if tryptag.check_if_cached(gene_id, terminus):
-    tryptag.open_field(gene_id, terminus, 0)
+    imgs = tryptag.open_field(gene_id, terminus, 0)
 else:
-    print("Not cached, do not analyse")
+    print("Not cached, cannot open")
 ```
 
 The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing.
