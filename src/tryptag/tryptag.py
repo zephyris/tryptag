@@ -20,11 +20,6 @@ class TrypTag:
 		self._progress_bar = None
 
 		# global variables for caching last field of view loaded
-		self._field_base_path_pil = None
-		self._thresholds_pil = None
-		self._channels_pil = None
-
-		# global variables for caching last field of view loaded
 		self._field_base_path_sk = None
 		self._thresholds_sk = None
 		self._channels_sk = None
@@ -287,65 +282,6 @@ class TrypTag:
 		for gene in self.gene_list:
 			for terminus in ["c", "n"]:
 				self.fetch_data(gene, terminus)
-
-	# open field of view, returning array with one PIL image per channel and threshold image
-	# [phase_(gray) mng_(green) dna_(blue) phase_threshold dna_threshold] OR
-	# [pha, mng, dna, pth, dth]
-	# channel images are mode F, 32-bit float, threshold images are mode L, 8 bit (0 or 255)
-	def open_field_pillow(self, gene, terminus, field):
-		from PIL import Image, ImageSequence
-		import os
-		terminus = terminus.lower()
-		self.fetch_data(gene, terminus)
-		field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene][terminus]["plate"], gene+"_4_"+terminus.upper()+"_"+str(field + 1))
-		if field_base_path != self._field_base_path_pil:
-			self._field_base_path_pil = field_base_path
-			field_image = Image.open(self._field_base_path_pil+".tif")
-			field_threshold = Image.open(self._field_base_path_pil+"_thr.tif")
-			self._channels_pil = []
-			for channel in ImageSequence.Iterator(field_image):
-				self._channels_pil.append(channel.copy().convert("F"))
-			self._thresholds_pil = []
-			for threshold in ImageSequence.Iterator(field_threshold):
-				self._thresholds_pil.append(threshold.copy().convert("L"))
-		return [self._channels_pil[0].copy(), self._channels_pil[1].copy(), self._channels_pil[2].copy(), self._thresholds_pil[0].copy(), self._thresholds_pil[1].copy()]
-
-	def open_cell_pillow(self, gene, terminus, field, cell, rotate = False, width = 323):
-		from PIL import Image, ImageSequence, ImageOps, ImageDraw, ImageChops, ImageMath
-		if rotate:
-			width_inter = width * 1.5 # greater than width * 2**0.5
-			height = round(width / 2)
-		else:
-			width_inter = width
-		self.fetch_data(gene, terminus)
-		cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
-		crop_centre = cell_data["centre"]
-		fill_centre = cell_data["wand"]
-		# open field
-		channels = self.open_field_pillow(gene, terminus, field)
-		# process phase threshold image to only have cell of interest
-		# halve image values, flood fill cell of interst, subtract 127 then double image values
-		# really need a image_change_values(min, max, v) function!
-		channels[3] = ImageChops.multiply(channels[3], Image.new("L", channels[3].size, color = 127))
-		ImageDraw.floodfill(channels[3], (fill_centre[0], fill_centre[1]), 255, thresh = 0)
-		channels[3] = ImageChops.subtract(channels[3], Image.new("L", channels[3].size, color = 127))
-		channels[3] = ImageMath.eval("a * 2", a = channels[3])
-		# Crop (and rotate)
-		cell_channels = []
-		for channel in channels:
-			# if crop outside of image bounds, then first increase canvas size
-			offs = 0
-			if crop_centre[0] - width_inter / 2 < 0 or crop_centre[1] - width_inter / 2 < 0 or crop_centre[0] + width_inter / 2 > channel.width or crop_centre[1] + width_inter / 2 > channel.height:
-				channel = ImageOps.expand(channel, border = round(width_inter / 2), fill = 0)
-				offs = round(width_inter / 2)
-			# square crop
-			channel = channel.crop((crop_centre[0] + offs - width_inter / 2, crop_centre[1] + offs - width_inter / 2, crop_centre[0] + offs + width_inter / 2, crop_centre[1] + offs + width_inter / 2))
-			if rotate:
-				# if rotating, rotate then crop to final dimensions
-				channel = channel.rotate(-self.gene_list[gene][terminus]["cells"][field][cell]["angle"], resample = Image.BICUBIC)
-				channel = channel.crop((width_inter / 2 - width / 2, width_inter / 2 - height / 2, width_inter / 2 + width / 2, width_inter / 2 + height / 2))
-			cell_channels.append(channel)
-		return cell_channels
 
 	# open field of view, returning array with one scikit image/np array image per channel and threshold image
 	# [phase_(gray) mng_(green) dna_(blue) phase_threshold dna_threshold] AKA
