@@ -15,11 +15,7 @@ To uninstall also use `pip`:
 pip uninstall tryptag
 ```
 
-`tryptag` requires several python modules: `numpy` `scikit-image` and `progressbar`. These should be installed using `pip`:
-
-```
-pip install numpy scikit-image progressbar
-```
+`tryptag` requires several python modules: `numpy` `scikit-image`, `progressbar` and `filelock`. These should be installed using `pip`.
 
 ## Quickstart guide
 
@@ -195,26 +191,15 @@ or Windows:
 tryptag.data_cache_path = "Z:/my/scratch/directory"
 ```
 
-Do not remove files from `data_cache_path`. `tryptag` does not check the plate subdirectories for integrity, ie. if files have been removed. You can, however, delete a whole plate subdirectory.
-Keyboard interrupt of either data download or zip decompression _should_ behave gracefully, leaving partial data but not preventing automatic re-download and/or decompression.
+Do not delete or move files from `data_cache_path`. `tryptag` does not check the plate subdirectories for integrity. You can, however, safely delete a plate subdirectory.
+Interrupt of either data download or zip decompression _should_ behave gracefully, leaving partial data but not preventing later automatic re-download and/or re-decompression.
 
-Do not run multiple scripts using the same `data_cache_path` as they may try to write to the same file at the same time. The exceptions are:
-
-1. If all data is already cached. You can use `fetch_all_data` to download all image data (this will probably take more than one week!):
+If multiple scripts using the same `data_cache_path` simultaneously try to download a plate it _should_ be handled gracefully.
+One script should download and decompress the image data, while the others (silently) wait until it the image data is available.
+However, for large-scale analyses, it is more robust to ensure all data is already cached. You can use `fetch_all_data` to download all image data (this will probably take more than one week!):
 
 ```
 tryptag.fetch_all_data()
-```
-
-2. If only one script triggers data download, and in any further scripts you manually check that data is already available before requesting any gene id/terminus combination:
-
-```
-gene_id = "Tb927.7.1920"
-terminus = "c"
-if tryptag.check_if_cached(gene_id, terminus):
-    imgs = tryptag.open_field(gene_id, terminus, 0)
-else:
-    print("Not cached, cannot open")
 ```
 
 The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing from [Zenodo](https://zenodo.org/record/6862289).

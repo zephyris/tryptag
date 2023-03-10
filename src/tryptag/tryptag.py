@@ -144,81 +144,98 @@ class TrypTag:
 			plate = self.gene_list[gene_id][terminus]["plate"]
 			zip_path = os.path.join(self.data_cache_path, plate+".zip")
 			dir_path = os.path.join(self.data_cache_path, plate)
-			if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
-				# fetch the processed microscopy data from Zenodo
-				if self.print_status: print("	making plate data directory for: "+plate)
-				import urllib.request
-				import shutil
-				if "record_id" not in self.zenodo_index[plate]:
-					# if not already translated, fetch the latest from master Zenodo ID
-					if self.print_status: print("	remapping zenodo id to latest version for id: "+self.gene_list[gene_id][terminus]["zenodo_id"])
-					import json
-					# fetch Zenodo record JSON, to get latest version doi
-					zenodo_json = self._fetch_zenodo_record_json(self.gene_list[gene_id][terminus]["zenodo_id"])
-					self.zenodo_index[plate]["record_doi"] = zenodo_json["doi"]
-					self.zenodo_index[plate]["record_id"] = str(zenodo_json["id"])
-					for file in zenodo_json["files"]:
-						if file["key"].endswith("_processed.zip"):
-							self.zenodo_index[plate]["record_url"] = file["links"]["self"]
-							self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
-				# download data
-				zip_md5 = 0
-				zip_path_temp = os.path.join(self.data_cache_path, "temp.zip")
-				while zip_md5 != self.zenodo_index[plate]["record_md5"]:
-					if self.print_status:
-						print("	downloading data: "+plate+".zip")
-						urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, self._show_progress_bar)
-					else:
-						urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
-					if self.print_status: print("	checking md5 of zip file")
-					zip_md5 = self._file_md5_hash(zip_path_temp)
-					if zip_md5 != self.zenodo_index[plate]["record_md5"]:
-						if self.print_status: print("	md5 of downloaded zip is incorrect ("+zip_md5+"), retrying download")
-				shutil.move(zip_path_temp, zip_path)
-				with open(zip_path+".md5", "w") as file: file.write(zip_md5)
-			if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
-				# unzip data
-				if self.print_status: print("	decompressing data: "+plate+".zip")
-				import zipfile
-				import shutil
-				try:
-					with zipfile.ZipFile(zip_path) as archive:
-						count = 0
-						for file in archive.namelist():
-							# loop through all files, finding files ending with the cell roi suffix
-							suffix = "_roisCells.txt"
-							if file.endswith(suffix):
-								count += 1
-								source_path = os.path.split(file)
-								# infer main tif and thresholded tif image filenames
-								file_roi = file
-								file_tif = file[:-len(suffix)]+".tif"
-								file_thr = file[:-len(suffix)]+"_thr.tif"
-								if file_roi in archive.namelist() and file_tif in archive.namelist() and file_thr in archive.namelist():
-									# if all exist, decompress and move to plate directory
-									archive.extract(file_roi, self.data_cache_path)
-									archive.extract(file_tif, self.data_cache_path)
-									archive.extract(file_thr, self.data_cache_path)
-									target_path = os.path.join(self.data_cache_path, plate)
-									shutil.move(os.path.join(self.data_cache_path, file_roi), os.path.join(target_path, os.path.split(file_roi)[-1]))
-									shutil.move(os.path.join(self.data_cache_path, file_tif), os.path.join(target_path, os.path.split(file_tif)[-1]))
-									shutil.move(os.path.join(self.data_cache_path, file_thr), os.path.join(target_path, os.path.split(file_thr)[-1]))
-								else:
-									print("")
-									print("== missing file for "+os.path.split(file_tif)[-1]+" ==")
-								if self.print_status: print(".", end = "", flush = True)
-					os.rmdir(os.path.join(self.data_cache_path, plate, "microscopeImagesAutoprocessed"));
-					# copy source zip md5 to the data directory, also marks decompression as complete
-					shutil.copyfile(zip_path+".md5", os.path.join(dir_path, "_"+plate+".zip.md5"))
-					if self.remove_zip_files:
-						os.remove(zip_path)
-						os.remove(zip_path+".md5")
-					if self.print_status:
-						print("")
-						print("	decompressed "+str(count)+" fields of view")
-				except BadZipfile:
-					print ("== invalid zip file: "+plate+".zip ==")
-					if self.remove_zip_files: os.remove(zip_path)
+			ziplock_path = os.path.join(self.data_cache_path, plate+".zip.lock")
+			dirlock_path = os.path.join(self.data_cache_path, plate+".dir.lock")
+			# setup plate-specific lock for threadsafe zip download
+			from filelock import FileLock
+			lock = FileLock(ziplock_path)
+			# download zip
+			lock.acquire()
+			try:
+				if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
+					# fetch the processed microscopy data from Zenodo
+					if self.print_status: print("	making plate data directory for: "+plate)
+					import urllib.request
+					import shutil
+					if "record_id" not in self.zenodo_index[plate]:
+						# if not already translated, fetch the latest from master Zenodo ID
+						if self.print_status: print("	remapping zenodo id to latest version for id: "+self.gene_list[gene_id][terminus]["zenodo_id"])
+						import json
+						# fetch Zenodo record JSON, to get latest version doi
+						zenodo_json = self._fetch_zenodo_record_json(self.gene_list[gene_id][terminus]["zenodo_id"])
+						self.zenodo_index[plate]["record_doi"] = zenodo_json["doi"]
+						self.zenodo_index[plate]["record_id"] = str(zenodo_json["id"])
+						for file in zenodo_json["files"]:
+							if file["key"].endswith("_processed.zip"):
+								self.zenodo_index[plate]["record_url"] = file["links"]["self"]
+								self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
+					# download data
+					zip_md5 = 0
+					zip_path_temp = os.path.join(self.data_cache_path, plate+".zip.tmp")
+					while zip_md5 != self.zenodo_index[plate]["record_md5"]:
+						if self.print_status:
+							print("	downloading data: "+plate+".zip")
+							urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, self._show_progress_bar)
+						else:
+							urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
+						if self.print_status: print("	checking md5 of zip file")
+						zip_md5 = self._file_md5_hash(zip_path_temp)
+						if zip_md5 != self.zenodo_index[plate]["record_md5"]:
+							if self.print_status: print("	md5 of downloaded zip is incorrect ("+zip_md5+"), retrying download")
+					shutil.move(zip_path_temp, zip_path)
+					with open(zip_path+".md5", "w") as file: file.write(zip_md5)
+			finally:
+				lock.release()
+			# setup plate-specific lock for threadsafe decompression
+			lock = FileLock(dirlock_path)
+			# download zip
+			lock.acquire()
+			try:
+				if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
+					# unzip data
+					if self.print_status: print("	decompressing data: "+plate+".zip")
+					import zipfile
+					import shutil
+					try:
+						with zipfile.ZipFile(zip_path) as archive:
+							count = 0
+							for file in archive.namelist():
+								# loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
+								suffix = "_roisCells.txt"
+								if file.endswith(suffix) and not (file.startswith("control") or file.startswith("ontrol") or file.startswith("Control")):
+									source_path = os.path.split(file)
+									# infer main tif and thresholded tif image filenames
+									file_roi = file
+									file_tif = file[:-len(suffix)]+".tif"
+									file_thr = file[:-len(suffix)]+"_thr.tif"
+									if file_roi in archive.namelist() and file_tif in archive.namelist() and file_thr in archive.namelist():
+										count += 1
+										# if all exist, decompress and move to plate directory
+										archive.extract(file_roi, self.data_cache_path)
+										archive.extract(file_tif, self.data_cache_path)
+										archive.extract(file_thr, self.data_cache_path)
+										target_path = os.path.join(self.data_cache_path, plate)
+										shutil.move(os.path.join(self.data_cache_path, file_roi), os.path.join(target_path, os.path.split(file_roi)[-1]))
+										shutil.move(os.path.join(self.data_cache_path, file_tif), os.path.join(target_path, os.path.split(file_tif)[-1]))
+										shutil.move(os.path.join(self.data_cache_path, file_thr), os.path.join(target_path, os.path.split(file_thr)[-1]))
+									else:
+										print("")
+										print("== missing file for "+os.path.split(file_tif)[-1]+" ==")
+									if self.print_status: print(".", end = "", flush = True)
+						os.rmtree(os.path.join(self.data_cache_path, plate, "microscopeImagesAutoprocessed"));
+						# copy source zip md5 to the data directory, also marks decompression as complete
+						shutil.copyfile(zip_path+".md5", os.path.join(dir_path, "_"+plate+".zip.md5"))
+						if self.remove_zip_files:
+							os.remove(zip_path)
+							os.remove(zip_path+".md5")
+						if self.print_status:
+							print("")
+							print("	decompressed "+str(count)+" fields of view")
+					except BadZipfile:
+						print ("== invalid zip file: "+plate+".zip ==")
+						if self.remove_zip_files: os.remove(zip_path)
+			finally:
+				lock.release()
 			# count fields of view and number of cells
 			base_path = os.path.join(self.data_cache_path, plate)
 			if "fields_count" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
