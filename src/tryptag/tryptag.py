@@ -222,7 +222,12 @@ class TrypTag:
 										print("")
 										print("== missing file for "+os.path.split(file_tif)[-1]+" ==")
 									if self.print_status: print(".", end = "", flush = True)
-						os.rmtree(os.path.join(self.data_cache_path, plate, "microscopeImagesAutoprocessed"));
+						# remove any subdirectories remaining from decompression
+						obj = os.scandir(os.path.join(self.data_cache_path, plate))
+						for entry in obj :
+							if entry.is_dir():
+								shutil.rmtree(os.path.join(self.data_cache_path, plate, entry.name))
+						obj.close()
 						# copy source zip md5 to the data directory, also marks decompression as complete
 						shutil.copyfile(zip_path+".md5", os.path.join(dir_path, "_"+plate+".zip.md5"))
 						if self.remove_zip_files:
