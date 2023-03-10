@@ -180,7 +180,7 @@ Thresholded images:
 
 ### General tips
 
-Make sure you have enough free disk space to download, decompress and cache the image data. This is ~40 Gb for a single plate and up to ~5 Tb for the entire dataset.
+Make sure you have enough free disk space to download, decompress and cache the image data. This is ~40 Gb for a single plate and ~6 Tb for the entire dataset.
 The default cache location is `_tryptag_data` within the current working directory. You can change this to a relative or absolute path to any directory you wish - we recommend a scratch drive with sufficient space.
 Make sure this is set at the start of every script:
 

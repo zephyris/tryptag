@@ -13,6 +13,9 @@ class TrypTag:
 		self.gene_list = None
 		self.zenodo_index = None
 
+		# master zenodo record id
+		self.master_zenodo_id = 6862289
+
 		# image properties
 		self.um_per_px = 6.5 / 63 # physical pixel size / corrected magnification
 
@@ -55,7 +58,7 @@ class TrypTag:
 		if self.gene_list is None:
 			import urllib.request
 			# fetch Zenodo record JSON, to get latest version doi
-			zenodo_json = self._fetch_zenodo_record_json(6862289)
+			zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
 			zenodo_record_id = str(zenodo_json["id"])
 			if self.print_status: print("	fetching gene list from latest zenodo version id: "+zenodo_record_id)
 			# load zenodo record index
