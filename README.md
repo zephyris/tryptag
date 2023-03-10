@@ -3,7 +3,7 @@
 Its primary intended use is for easy access to image data for automated image analysis.
 
 ## Installation
-Install (or install an updated version) using `pip`:
+Install using `pip`:
 
 ```
 pip install git+https://github.com/zephyris/tryptag

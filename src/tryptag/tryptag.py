@@ -10,7 +10,8 @@ class TrypTag:
 		self.remove_zip_files = False
 
 		# master zenodo record id
-		self.master_zenodo_id = 6862289
+		self.master_zenodo_id = 6862289 # tryptag
+		#self.master_zenodo_id = 7258722 # targeted bsf
 
 		# variables which will contain tryptag data
 		self.gene_list = None
@@ -75,24 +76,32 @@ class TrypTag:
 			response = urllib.request.urlopen(url)
 			for line in response:
 				line = line.decode(response.info().get_param('charset') or 'utf-8-sig').splitlines()[0].split("\t")
-				if line[0] != "Gene ID":
+				if line[0] == "Gene ID":
+					indices = {}
+					for l in range(len(line)):
+						indices[line[l]] = l
+				else:
 					# if not the header line, grab gene data
 					self.gene_list[line[0]] = {}
 					termini = ["c", "n"]
-					offsets = [5, 16]
-					for t in range(len(termini)):
-						if line[offsets[t] + 0] == "cell line generated":
+					for t in termini:
+						p = t.upper() + " "
+						if line[indices[p + "status"]] == "cell line generated":
+							# data from columns which must be present
 							terminus_data = {
-								"plate": line[offsets[t] + 1].split(" ")[0],
-								"well": line[offsets[t] + 1].split(" ")[1],
-								"loc": line[offsets[t] + 8],
-								"signl_low": line[offsets[t] + 9],
-								"signal_background": line[offsets[t] + 10]
+								"plate": line[indices[p + "plate and well"]].split(" ")[0],
+								"well": line[indices[p + "plate and well"]].split(" ")[1],
+								"loc": line[indices[p + "localisation"]],
+								"primer_f": line[indices[p + "primer F"]],
+								"primer_r": line[indices[p + "primer R"]]
 							}
-							if terminus_data["plate"] == "V1115_210180807":
-								terminus_data["plate"] = "V1115_20180807"
+							# additional data, optional columns
+							if p+" classified as faint" in indices:
+								terminus_data["signl_low"]: line[indices[p + "fainter than parental"]]
+								terminus_data["signal_background"]: line[indices[p + "classified as faint"]]
+							# look up zenodo id
 							terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
-							self.gene_list[line[0]][termini[t]] = terminus_data
+							self.gene_list[line[0]][t] = terminus_data
 
 	def _show_progress_bar(self, block_num, block_size, total_size):
 		import progressbar
