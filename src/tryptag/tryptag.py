@@ -295,20 +295,20 @@ class TrypTag:
 			if os.path.isdir(dir_path):
 				md5_file = os.path.join(dir_path, "_"+plate+".zip.md5")
 				if not os.path.isfile(md5_file):
-					if self.print_status: print("	md5 file mising from image directory")
+					if self.print_status: print("	md5 file mising from image directory:", plate)
 				else:
 					with open(md5_file, "r") as file:
 						md5 = file.read()
 						if md5 != self.zenodo_index[plate]["record_md5"]:
-							if self.print_status: print("	md5 file in directory does not match zenodo record id for zip")
+							if self.print_status: print("	md5 file in directory does not match zenodo record md5:", plate)
 			if os.path.isfile(zip_path):
 				if self.remove_zip_files:
-					if self.print_status: print("	zip found which should have been removed")
+					if self.print_status: print("	zip found which should have been removed:", plate)
 				md5_file = os.path.join(zip_path+".md5")
 				with open(md5_file, "r") as file:
 					md5 = file.read()
 					if md5 != self.zenodo_index[plate]["record_md5"]:
-						if self.print_status: print("	md5 file for zip file does not match zenodo record id for zip")
+						if self.print_status: print("	md5 file for zip file does not match zenodo record md5:", plate)
 
 	# force load of all data by iterating through every gene and terminus
 	def fetch_all_data(self):
