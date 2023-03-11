@@ -326,7 +326,7 @@ class TrypTag:
 	# [pha, mng, dna, pth, dth]
 	# channel images are mode F, 32-bit float, threshold images are mode L, 8 bit (0 or 255)
 	def open_field(self, gene, terminus, field):
-		import skimage
+		import skimage.io
 		import numpy
 		import os
 		terminus = terminus.lower()
@@ -352,20 +352,23 @@ class TrypTag:
 		image[image >= min & image <= max] = v
 		return
 
-	def open_cell(self, gene, terminus, field, cell, rotate = False, width = 323):
-		import skimage
+	# master function for opening a cell
+	def _open_cell(self, gene, terminus, field, crop_centre, fill_centre, phathr = None, dnathr = None, angle = 0, rotate = False, width = 323):
+		import skimage.morphology
+		import skimage.transform
 		import numpy
 		if rotate:
 			width_inter = width * 1.5 # greater than width * 2**0.5
 			height = round(width / 2)
 		else:
 			width_inter = width
-		self.fetch_data(gene, terminus)
-		cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
-		crop_centre = cell_data["centre"]
-		fill_centre = cell_data["wand"]
 		# open field
 		channels = self.open_field(gene, terminus, field)
+		# replace with custom phathr and dnathr, if defined
+		if not phathr is None:
+			channels[3] = phathr.copy()
+		if not dnathr is None:
+			channels[4] = dnathr.copy()
 		# process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
 		channels[3][channels[3] == 255] = 127
 		channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
@@ -384,7 +387,25 @@ class TrypTag:
 			if rotate:
 				# if rotating, rotate then crop to final dimensions
 				channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
-				channel = skimage.transform.rotate(channel, -self.gene_list[gene][terminus]["cells"][field][cell]["angle"], preserve_range=True).astype(channel_dtype)
+				channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
 				channel = self._skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
 			cell_channels.append(channel)
 		return cell_channels
+
+	# open a cell, cropped from a field of view
+	# uses the phase and dna threshold images from tryptag
+	# cell x, y coordinate in phase threshold from tryptag
+	def open_cell(self, gene, terminus, field, cell, rotate = False, width = 323):
+		self.fetch_data(gene, terminus)
+		cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
+		crop_centre = cell_data["centre"]
+		fill_centre = cell_data["wand"]
+		angle = cell_data["angle"]
+		return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = None, dnathr = None, angle = angle, rotate = rotate, width = width)
+
+	# opens a custom cell from a field of view
+	# instead of using tryptag thresholded phase and dna images, user-provided phathr and dnathr (uint8, 255 = object)
+	# crop_centre is the (x, y) tuple around which to crop
+	# fill_centre is a (x, y) tuple of a pixel which is in an object (255) in phathr
+	def open_cell_custom(self, gene, terminus, field, phathr, dnathr, crop_centre, fill_centre, angle = False, rotate = False, width = 323):
+		return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = phathr, dnathr = dnathr, angle = angle, rotate = rotate, width = width)
