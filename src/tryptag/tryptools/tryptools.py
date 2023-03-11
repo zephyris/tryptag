@@ -113,7 +113,7 @@ def cell_morphometry(pth, dth, dna):
 	#   ie. k = n for even, k = n + 1 for odd
 	dna_objects.sort(key=lambda x: x["area"])
 	count_k = 0
-	for o in range(ceil(len(dna_objects) / 2)):
+	for o in range(math.ceil(len(dna_objects) / 2)):
 		# unless too large
 		if dna_objects[o]["area"] < 250: # MAGIC NUMBER: Maximum area for kinetoplast of 250 px
 			dna_objects[o]["type"] = "k"
