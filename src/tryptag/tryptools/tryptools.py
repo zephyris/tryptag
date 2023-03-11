@@ -141,7 +141,7 @@ def cell_morphology_analysis(pth, dth, dna):
 	morphology = cell_midline_analysis(pth)
 	count_kn, k_objects, n_objects = cell_kn_analysis(pth, dth, dna)
 	# get k/n positions along midline
-	dna_objects = k_objects.append(n_objects)
+	dna_objects = k_objects + n_objects
 	if morphology["midline"] is not None:
 		for object in dna_objects:
 			object["midline_index"] = scipy.spatial.distance.cdist(numpy.array([[object["y"]], [object["x"]]]).reshape(-1,1), numpy.array(midline).reshape(-1,1)).argmin()
