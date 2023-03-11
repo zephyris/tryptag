@@ -148,27 +148,27 @@ def cell_morphology_analysis(pth, dth, dna):
     # orient cell from most terminus-proximal kinetoplast
     if count_k > 0:
       # check positions of kinetoplasts along cell midline from both ends
-      min_k_1 = len(midline)
-      min_k_2 = len(midline)
+      min_k_1 = len(morphology["midline"])
+      min_k_2 = len(morphology["midline"])
       for object in dna_objects:
         if object["type"] == "k":
           if object["midline_index"] < min_k_1:
             min_k_1 = object["midline_index"]
-          if len(midline) - object["midline_index"] < min_k_2:
-            min_k_2 = len(midline) - object["midline_index"]
+          if len(morphology["midline"]) - object["midline_index"] < min_k_2:
+            min_k_2 = len(morphology["midline"]) - object["midline_index"]
       # if a kinetoplast closer to the end than the start of the midline, then reverse midline
       if min_k_2 < min_k_1:
-        midline.reverse()
+        morphology["midline"].reverse()
         for object in dna_objects:
-          object["midline_index"] = len(midline) - object["midline_index"]
+          object["midline_index"] = len(morphology["midline"]) - object["midline_index"]
       # cell anterior and posterior coordinates
-      morphology["anterior"] = midline[0]
-      morphology["posterior"] = midline[-1]
+      morphology["anterior"] = morphology["midline"][0]
+      morphology["posterior"] = morphology["midline"][-1]
       # distance along midline
       distance = [0]
       root2 = 2 ** 0.5
-      for i in range(1, len(midline)):
-        if abs(midline[i][0] - midline[i-1][0]) == 1 and abs(midline[i][1] - midline[i-1][1]) == 1:
+      for i in range(1, len(morphology["midline"])):
+        if abs(morphology["midline"][i][0] - morphology["midline"][i-1][0]) == 1 and abs(morphology["midline"][i][1] - morphology["midline"][i-1][1]) == 1:
           distance.append(distance[-1] + root2)
         else:
           distance.append(distance[-1] + 1)
