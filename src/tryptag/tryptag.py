@@ -211,7 +211,7 @@ class TrypTag:
                 count_checked += 1
                 if self.print_status: self._show_progress_bar(count_checked, 1, total_names)
                 # loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
-                if file.endswith(suffix) and not (file.startswith("control") or file.startswith("ontrol") or file.startswith("Control")):
+                if file.endswith(suffix) and not (os.path.split(file)[-1].startswith("control") or os.path.split(file)[-1].startswith("ontrol") or os.path.split(file)[-1].startswith("Control")):
                   source_path = os.path.split(file)
                   # infer main tif and thresholded tif image filenames
                   file_roi = file

@@ -144,7 +144,7 @@ def cell_morphology_analysis(pth, dth, dna):
   dna_objects = k_objects + n_objects
   if "midline" in morphology:
     for object in dna_objects:
-      object["midline_index"] = scipy.spatial.distance.cdist(numpy.array([[object["y"]], [object["x"]]]).reshape(-1,1), numpy.array(midline).reshape(-1,1)).argmin()
+      object["midline_index"] = scipy.spatial.distance.cdist(numpy.array([[object["y"]], [object["x"]]]).reshape(-1,1), numpy.array(morphology["midline"]).reshape(-1,1)).argmin()
     # orient cell from most terminus-proximal kinetoplast
     if count_k > 0:
       # check positions of kinetoplasts along cell midline from both ends
