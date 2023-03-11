@@ -66,7 +66,7 @@ def cell_kn_analysis(pth, dth, dna):
   dna_props_table = skimage.measure.regionprops_table(dna_lab, dna, properties=("intensity_mean", "centroid_weighted"))
   dna_objects = []
   # filter dna objects
-  for i in range(1, dna_lab.max()):
+  for i in range(0, dna_lab.max()):
     # if labelled dth object overlaps cell object in pth
     if pth_props_table["intensity_max"][i] == 255 and pth_props_table["area"][i] > 17: # MAGIG NUMBER: Minimum kinetoplast area of 17 px
       # print stats
