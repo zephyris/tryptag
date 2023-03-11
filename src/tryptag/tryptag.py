@@ -201,10 +201,16 @@ class TrypTag:
 					import shutil
 					try:
 						with zipfile.ZipFile(zip_path) as archive:
-							count = 0
+							suffix = "_roisCells.txt"
+							count_checked = 0
+							total_names = len(archive.namelist())
+							count_decompressed = 0
+							missing = []
+							# do decompression
 							for file in archive.namelist():
+								if self.print_status: self._show_progress_bar(count_decompressed, 1, total_names)
+								count_decompressed += 1
 								# loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
-								suffix = "_roisCells.txt"
 								if file.endswith(suffix) and not (file.startswith("control") or file.startswith("ontrol") or file.startswith("Control")):
 									source_path = os.path.split(file)
 									# infer main tif and thresholded tif image filenames
@@ -212,7 +218,7 @@ class TrypTag:
 									file_tif = file[:-len(suffix)]+".tif"
 									file_thr = file[:-len(suffix)]+"_thr.tif"
 									if file_roi in archive.namelist() and file_tif in archive.namelist() and file_thr in archive.namelist():
-										count += 1
+										count_decompressed += 1
 										# if all exist, decompress and move to plate directory
 										archive.extract(file_roi, self.data_cache_path)
 										archive.extract(file_tif, self.data_cache_path)
@@ -222,9 +228,12 @@ class TrypTag:
 										shutil.move(os.path.join(self.data_cache_path, file_tif), os.path.join(target_path, os.path.split(file_tif)[-1]))
 										shutil.move(os.path.join(self.data_cache_path, file_thr), os.path.join(target_path, os.path.split(file_thr)[-1]))
 									else:
-										print("")
-										print("! Missing file for "+os.path.split(file_tif)[-1]+" !")
-									if self.print_status: print(".", end = "", flush = True)
+										missing.append(os.path.split(file_tif)[-1])
+							if self.print_status:
+								self._show_progress_bar(total_names, 1, total_names)
+						if self.print_status:
+							print("! Expected files were missing in the zip for the following gene IDs !")
+							print(" ".join(missing))
 						# remove any subdirectories remaining from decompression
 						obj = os.scandir(os.path.join(self.data_cache_path, plate))
 						for entry in obj :
@@ -238,7 +247,7 @@ class TrypTag:
 							os.remove(zip_path+".md5")
 						if self.print_status:
 							print("")
-							print("  Decompressed "+str(count)+" fields of view")
+							print("  Decompressed "+str(count_decompressed)+" fields of view")
 					except BadZipfile:
 						print ("! Zip file invalid: "+plate+".zip !")
 						if self.remove_zip_files: os.remove(zip_path)
