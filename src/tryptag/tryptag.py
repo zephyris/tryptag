@@ -208,8 +208,8 @@ class TrypTag:
 							missing = []
 							# do decompression
 							for file in archive.namelist():
-								if self.print_status: self._show_progress_bar(count_decompressed, 1, total_names)
-								count_decompressed += 1
+								count_checked += 1
+								if self.print_status: self._show_progress_bar(count_checked, 1, total_names)
 								# loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
 								if file.endswith(suffix) and not (file.startswith("control") or file.startswith("ontrol") or file.startswith("Control")):
 									source_path = os.path.split(file)
@@ -229,9 +229,7 @@ class TrypTag:
 										shutil.move(os.path.join(self.data_cache_path, file_thr), os.path.join(target_path, os.path.split(file_thr)[-1]))
 									else:
 										missing.append(os.path.split(file_tif)[-1])
-							if self.print_status:
-								self._show_progress_bar(total_names, 1, total_names)
-						if self.print_status:
+						if self.print_status and len(missing) > 0:
 							print("! Expected files were missing in the zip for the following gene IDs !")
 							print(" ".join(missing))
 						# remove any subdirectories remaining from decompression
