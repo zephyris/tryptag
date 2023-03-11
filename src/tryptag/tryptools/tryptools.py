@@ -57,47 +57,15 @@ def mask_pruned_skeleton(thr, prune_length):
 	return skeleton
 
 # dna particle analysis (from dna) within objects (dna)
-
-def cell_morphometry(pth, dth, dna):
-	# cell midline, from pth
-	pth_skeleton = mask_pruned_skeleton(pth, 15) # MAGIC NUMBER: 15px pruning distance
-	neighbours = scipy.ndimage.convolve(pth_skeleton, [[1, 1, 1], [1, 0, 1], [1, 1, 1]]) * pth_skeleton
-	termini_count = numpy.count_nonzero(neighbours == 1)
-	midline_count = numpy.count_nonzero(neighbours == 2)
-	branches_count = numpy.count_nonzero(neighbours > 2)
-	# trace, if a single line (two termini, zero branches)
-	midline = None
-	if termini_count == 2 and branches_count == 0:
-		termini = neighbours.copy()
-		termini[termini > 1] = 0
-		termini_y, termini_x = skimage.morphology.local_maxima(termini, indices=True, allow_borders=False)
-		# trace from index 0
-		midline = [[termini_y[0]], [termini_x[0]]]
-		v = pth_skeleton[midline[0][-1], midline[1][-1]]
-		while v > 0:
-			v = 0
-			# mark visited pixels by setting to 0
-			pth_skeleton[midline[0][-1], midline[1][-1]] = 0
-			# for all neighbours...
-			for a in range(-1, 2):
-				for b in range(-1, 2):
-					# if a skeleton pixel, step in that direction
-					if pth_skeleton[midline[0][-1] + b, midline[1][-1] + a] == 1:
-						midline[0].append(midline[0][-1] + b)
-						midline[1].append(midline[1][-1] + a)
-						v = pth_skeleton[midline[0][-1], midline[1][-1]]
-						# break inner loop on match
-						break
-				# break outer loop with inner
-				else:
-					continue
-				break
-	# dna object positions, from dth and dna
+def cell_kn_analysis(pth, dth, dna):
+	# background correct dna using median
 	dna = dna - numpy.median(dna)
+	# label objects and measure signal intensity and location
 	dna_lab = skimage.measure.label(dth)
 	pth_props_table = skimage.measure.regionprops_table(dna_lab, pth, properties=("intensity_max", "area"))
 	dna_props_table = skimage.measure.regionprops_table(dna_lab, dna, properties=("intensity_mean", "centroid_weighted"))
 	dna_objects = []
+	# filter dna objects
 	for i in range(1, dna_lab.max()):
 		# if labelled dth object overlaps cell object in pth
 		if pth_props_table["intensity_max"][i] == 255 and pth_props_table["area"][i] > 17: # MAGIG NUMBER: Minimum kinetoplast area of 17 px
@@ -123,10 +91,58 @@ def cell_morphometry(pth, dth, dna):
 			object["type"] = "n"
 	count_n = len(dna_objects) - count_k
 	count_kn = str(count_k)+"K"+str(count_n)+"N"
+	# return XKXN string, list of kinetoplast objects and list of nucleus objects
+	return count_kn, [x for x in dna_objects if x["type"] == "k"], [x for x in dna_objects if x["type"] == "n"]
+
+# cell midline, from pth
+def cell_midline_analysis(pth):
+	pth_skeleton = mask_pruned_skeleton(pth, 15) # MAGIC NUMBER: 15px pruning distance
+	neighbours = scipy.ndimage.convolve(pth_skeleton, [[1, 1, 1], [1, 0, 1], [1, 1, 1]]) * pth_skeleton
+	termini_count = numpy.count_nonzero(neighbours == 1)
+	midline_count = numpy.count_nonzero(neighbours == 2)
+	branches_count = numpy.count_nonzero(neighbours > 2)
+	morphology = {
+		"termini": termini_count,
+		"midlines": midline_count,
+		"branches": branches_count,
+	}
+	# trace, if a single line (two termini, zero branches)
+	if termini_count == 2 and branches_count == 0:
+		termini = neighbours.copy()
+		termini[termini > 1] = 0
+		termini_y, termini_x = skimage.morphology.local_maxima(termini, indices=True, allow_borders=False)
+		# trace from index 0
+		midline = [[termini_y[0]], [termini_x[0]]]
+		v = pth_skeleton[midline[0][-1], midline[1][-1]]
+		while v > 0:
+			v = 0
+			# mark visited pixels by setting to 0
+			pth_skeleton[midline[0][-1], midline[1][-1]] = 0
+			# for all neighbours...
+			for a in range(-1, 2):
+				for b in range(-1, 2):
+					# if a skeleton pixel, step in that direction
+					if pth_skeleton[midline[0][-1] + b, midline[1][-1] + a] == 1:
+						midline[0].append(midline[0][-1] + b)
+						midline[1].append(midline[1][-1] + a)
+						v = pth_skeleton[midline[0][-1], midline[1][-1]]
+						# break inner loop on match
+						break
+				# break outer loop with inner
+				else:
+					continue
+				break
+		morphology["midline"] = midline
+	return morphology
+
+# overall cell morphology, from pth, dth and dna
+# only gives really useful data when skeletonisation gives a single line
+def cell_morphology_analysis(pth, dth, dna):
+	morphology = cell_midline_analysis(pth)
+	count_kn, k_objects, n_objects = cell_kn_analysis(pth, dth, dna)
 	# get k/n positions along midline
-	anterior = None
-	posterior = None
-	if midline is not None:
+	dna_objects = k_objects.append(n_objects)
+	if morphology["midline"] is not None:
 		for object in dna_objects:
 			object["midline_index"] = scipy.spatial.distance.cdist(numpy.array([[object["y"]], [object["x"]]]).reshape(-1,1), numpy.array(midline).reshape(-1,1)).argmin()
 		# orient cell from most terminus-proximal kinetoplast
@@ -142,17 +158,19 @@ def cell_morphometry(pth, dth, dna):
 						min_k_2 = len(midline) - object["midline_index"]
 			# if a kinetoplast closer to the end than the start of the midline, then reverse midline
 			if min_k_2 < min_k_1:
+				midline.reverse()
 				for object in dna_objects:
 					object["midline_index"] = len(midline) - object["midline_index"]
-			midline.reverse()
-			anterior = midline[0]
-			posterior = midline[-1]
-	morphology = {
-		"termini": termini_count,
-		"midlines": midline_count,
-		"branches": branches_count,
-		"midline": midline,
-		"anterior": anterior,
-		"posterior": posterior
-	}
+			# cell anterior and posterior coordinates
+			morphology["anterior"] = midline[0]
+			morphology["posterior"] = midline[-1]
+			# distance along midline
+			distance = [0]
+			root2 = 2 ** 0.5
+			for i in range(1, len(midline)):
+				if abs(midline[i][0] - midline[i-1][0]) == 1 and abs(midline[i][1] - midline[i-1][1]) == 1:
+					distance.append(distance[-1] + root2)
+				else:
+					distance.append(distance[-1] + 1)
+			morphology["distance"] = distance
 	return count_kn, [x for x in dna_objects if x["type"] == "k"], [x for x in dna_objects if x["type"] == "n"], morphology
