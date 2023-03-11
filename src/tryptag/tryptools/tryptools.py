@@ -1,4 +1,5 @@
 import numpy
+import scipy
 import skimage
 import math
 
