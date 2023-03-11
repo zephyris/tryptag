@@ -36,13 +36,14 @@ class TrypTag:
 		import json
 		import time
 		url = "https://zenodo.org/api/records/"+str(zenodo_id)
+		if self.print_status: print("  Fetching Zenodo record for "+str(zenodo_id)+" from: "+url)
 		# Zenodo queries are rate limited, so request with that in mind
 		response = None
 		while response is None:
 			try:
 				response = urlopen(url)
 			except HTTPError as e:
-				if self.print_status: print("	Zenodo rate limit reached, waiting to retry")
+				if self.print_status: print("  Zenodo query rate limit reached, waiting to retry")
 				time.sleep(60) # testing shows the rate limiter resets after 50s, so 60s for a bit of space
 		zenodo_json = json.loads(response.read().decode(response.info().get_param('charset') or 'utf-8-sig'))
 		zenodo_record_id = str(zenodo_json["id"])
@@ -54,15 +55,16 @@ class TrypTag:
 		if self.gene_list is None:
 			import urllib.request
 			# fetch Zenodo record JSON, to get latest version doi
+			print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
 			zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
 			zenodo_record_id = str(zenodo_json["id"])
-			if self.print_status: print("	fetching gene list from latest zenodo version id: "+zenodo_record_id)
+			if self.print_status: print("  Using latest Zenodo version, record ID: "+zenodo_record_id)
 			# load zenodo record index
 			if self.zenodo_index is None:
-				if self.print_status: print("	fetching zenodo record id index")
 				# load DOI index
 				self.zenodo_index = {}
 				url = "https://zenodo.org/record/"+zenodo_record_id+"/files/plate_doi_index.tsv?download=1"
+				if self.print_status: print("  Fetching plate to Zenodo ID mapping from: "+url)
 				response = urllib.request.urlopen(url)
 				for line in response:
 					line = line.decode(response.info().get_param('charset') or 'utf-8-sig').splitlines()[0].split("\t")
@@ -71,8 +73,8 @@ class TrypTag:
 					self.zenodo_index[line[1]] = doi_data
 			# load localisations table
 			self.gene_list = {}
-			if self.print_status: print("	fetching gene data table")
 			url = "https://zenodo.org/record/"+zenodo_record_id+"/files/localisations.tsv?download=1"
+			if self.print_status: print(" Fetching gene data table from: "+url)
 			response = urllib.request.urlopen(url)
 			for line in response:
 				line = line.decode(response.info().get_param('charset') or 'utf-8-sig').splitlines()[0].split("\t")
@@ -136,9 +138,10 @@ class TrypTag:
 		self.fetch_gene_list()
 		if terminus in self.gene_list[gene_id]:
 			import os
+			print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
 			# check if the data cache directory exists, and make if not
 			if not os.path.isdir(self.data_cache_path):
-				if self.print_status: print("	making data cache directory")
+				if self.print_status: print("  Making data cache directory: "+self.data_cache_path)
 				os.mkdir(self.data_cache_path)
 			# target paths for zip file and data subdirectory
 			plate = self.gene_list[gene_id][terminus]["plate"]
@@ -154,12 +157,11 @@ class TrypTag:
 			try:
 				if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
 					# fetch the processed microscopy data from Zenodo
-					if self.print_status: print("	making plate data directory for: "+plate)
+					if self.print_status: print("  Making plate data directory for: "+plate)
 					import urllib.request
 					import shutil
 					if "record_id" not in self.zenodo_index[plate]:
-						# if not already translated, fetch the latest from master Zenodo ID
-						if self.print_status: print("	remapping zenodo id to latest version for id: "+self.gene_list[gene_id][terminus]["zenodo_id"])
+						# if not already translated, fetch the latest Zenodo ID from master Zenodo ID
 						import json
 						# fetch Zenodo record JSON, to get latest version doi
 						zenodo_json = self._fetch_zenodo_record_json(self.gene_list[gene_id][terminus]["zenodo_id"])
@@ -174,14 +176,15 @@ class TrypTag:
 					zip_path_temp = os.path.join(self.data_cache_path, plate+".zip.tmp")
 					while zip_md5 != self.zenodo_index[plate]["record_md5"]:
 						if self.print_status:
-							print("	downloading data: "+plate+".zip")
+							print("  Downloading data from: "+self.zenodo_index[plate]["record_url"])
 							urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, self._show_progress_bar)
 						else:
 							urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
-						if self.print_status: print("	checking md5 of zip file")
+						if self.print_status: print("  Checking MD5 hash of: "+plate+".zip.tmp")
 						zip_md5 = self._file_md5_hash(zip_path_temp)
 						if zip_md5 != self.zenodo_index[plate]["record_md5"]:
-							if self.print_status: print("	md5 of downloaded zip is incorrect ("+zip_md5+"), retrying download")
+							if self.print_status: print("! MD5 of downloaded zip is incorrect ("+zip_md5+"), retrying download !")
+					if self.print_status: print("  Download complete")
 					shutil.move(zip_path_temp, zip_path)
 					with open(zip_path+".md5", "w") as file: file.write(zip_md5)
 			finally:
@@ -193,7 +196,7 @@ class TrypTag:
 			try:
 				if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
 					# unzip data
-					if self.print_status: print("	decompressing data: "+plate+".zip")
+					if self.print_status: print("  Decompressing image data from: "+plate+".zip")
 					import zipfile
 					import shutil
 					try:
@@ -220,7 +223,7 @@ class TrypTag:
 										shutil.move(os.path.join(self.data_cache_path, file_thr), os.path.join(target_path, os.path.split(file_thr)[-1]))
 									else:
 										print("")
-										print("== missing file for "+os.path.split(file_tif)[-1]+" ==")
+										print("! Missing file for "+os.path.split(file_tif)[-1]+" !")
 									if self.print_status: print(".", end = "", flush = True)
 						# remove any subdirectories remaining from decompression
 						obj = os.scandir(os.path.join(self.data_cache_path, plate))
@@ -235,16 +238,16 @@ class TrypTag:
 							os.remove(zip_path+".md5")
 						if self.print_status:
 							print("")
-							print("	decompressed "+str(count)+" fields of view")
+							print("  Decompressed "+str(count)+" fields of view")
 					except BadZipfile:
-						print ("== invalid zip file: "+plate+".zip ==")
+						print ("! Zip file invalid: "+plate+".zip !")
 						if self.remove_zip_files: os.remove(zip_path)
 			finally:
 				lock.release()
 			# count fields of view and number of cells
 			base_path = os.path.join(self.data_cache_path, plate)
 			if "fields_count" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
-				if self.print_status: print("	counting image data files for: "+gene_id+" "+terminus)
+				if self.print_status: print("  Counting image data files for: "+gene_id+" "+terminus)
 				import glob
 				cells = []
 				for i in range(len(glob.glob(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_*_roisCells.txt")))):
@@ -284,6 +287,7 @@ class TrypTag:
 		import os
 		# load tryptag data, if not already
 		self.fetch_gene_list()
+		print("Checking data cache for errors")
 		for plate in self.zenodo_index:
 			zip_path = os.path.join(self.data_cache_path, plate+".zip")
 			dir_path = os.path.join(self.data_cache_path, plate)
@@ -295,20 +299,20 @@ class TrypTag:
 			if os.path.isdir(dir_path):
 				md5_file = os.path.join(dir_path, "_"+plate+".zip.md5")
 				if not os.path.isfile(md5_file):
-					if self.print_status: print("	md5 file mising from image directory:", plate)
+					if self.print_status: print("  MD5 file mising from image directory:", plate)
 				else:
 					with open(md5_file, "r") as file:
 						md5 = file.read()
 						if md5 != self.zenodo_index[plate]["record_md5"]:
-							if self.print_status: print("	md5 file in directory does not match zenodo record md5:", plate)
+							if self.print_status: print("  MD5 file in directory does not match zenodo record md5:", plate)
 			if os.path.isfile(zip_path):
 				if self.remove_zip_files:
-					if self.print_status: print("	zip found which should have been removed:", plate)
+					if self.print_status: print("  Zip found which should have been removed:", plate)
 				md5_file = os.path.join(zip_path+".md5")
 				with open(md5_file, "r") as file:
 					md5 = file.read()
 					if md5 != self.zenodo_index[plate]["record_md5"]:
-						if self.print_status: print("	md5 file for zip file does not match zenodo record md5:", plate)
+						if self.print_status: print("  MD5 file for zip file does not match zenodo record MD5:", plate)
 
 	# force load of all data by iterating through every gene and terminus
 	def fetch_all_data(self):
