@@ -74,7 +74,7 @@ class TrypTag:
 			# load localisations table
 			self.gene_list = {}
 			url = "https://zenodo.org/record/"+zenodo_record_id+"/files/localisations.tsv?download=1"
-			if self.print_status: print(" Fetching gene data table from: "+url)
+			if self.print_status: print("  Fetching gene data table from: "+url)
 			response = urllib.request.urlopen(url)
 			for line in response:
 				line = line.decode(response.info().get_param('charset') or 'utf-8-sig').splitlines()[0].split("\t")
@@ -138,10 +138,9 @@ class TrypTag:
 		self.fetch_gene_list()
 		if terminus in self.gene_list[gene_id]:
 			import os
-			print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
 			# check if the data cache directory exists, and make if not
 			if not os.path.isdir(self.data_cache_path):
-				if self.print_status: print("  Making data cache directory: "+self.data_cache_path)
+				if self.print_status: print("Making data cache directory: "+self.data_cache_path)
 				os.mkdir(self.data_cache_path)
 			# target paths for zip file and data subdirectory
 			plate = self.gene_list[gene_id][terminus]["plate"]
@@ -156,6 +155,7 @@ class TrypTag:
 			lock.acquire()
 			try:
 				if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
+					print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
 					# fetch the processed microscopy data from Zenodo
 					if self.print_status: print("  Making plate data directory for: "+plate)
 					import urllib.request
