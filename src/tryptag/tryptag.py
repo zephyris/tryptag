@@ -295,8 +295,8 @@ class TrypTag:
         os.mkdir(self.data_cache_path)
         # check disk usage
         space_required = self._data_cache_size
-        if self.remove_zip_files == True:
-          space_required = space_reqired * 2 # ~ double if retaining zips
+        if self.remove_zip_files == False:
+          space_required = space_required * 2 # ~ double if retaining zips
         total, used, free = shutil.disk_usage(self.data_cache_path)
         if free < space_required:
           if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 2))+" / "+str(round(space_required / float(2 << 40), 2))+" TiB available !")
