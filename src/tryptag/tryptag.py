@@ -567,15 +567,16 @@ class TrypTag:
   def open_cell_custom(self, gene, terminus, field, phathr, dnathr, crop_centre, fill_centre, angle = False, rotate = False, width = 323):
     return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = phathr, dnathr = dnathr, angle = angle, rotate = rotate, width = width)
 
-  def analyse_cells(self, list, function):
+  # Iterates over gene id/terminus in list of {"gene_id": gene_id, "terminus": terminus}
+  # Runs function(gene_id, terminus) and records the result as "result" in list entry
+  def analyse_list(self, list, function):
     for i in range(len(list)):
       self.fetch_data(list[i]["gene_id"], list[i]["terminus"])
-      for field in range(len(self.gene_list[list[i]["gene_id"]][list[i]["terminus"]]["cells"])):
-        for cell in range(len(self.gene_list[list[i]["gene_id"]][list[i]["terminus"]]["cells"][field])):
-          list[i]["result"] = function(self.open_cell(self.gene_list[list[i]["gene_id"]], list[i]["terminus"], field, cell))
+      list[i]["result"] = function(gene_id, terminus)
     return list
   
-  def analyse_all_cells(self, function):
+  # Gets a list of all genes and analyses
+  def analyse_all(self, function):
     self.fetch_gene_list()
     list = []
     for gene_id in self.gene_list:
@@ -585,4 +586,4 @@ class TrypTag:
               "gene_id": gene_id,
               "terminus": terminus
           })
-    self.analyse_cells(list, fuction)
+    return (self.analyse_cells(list, fuction))
