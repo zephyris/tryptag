@@ -193,7 +193,7 @@ class TrypTag:
       modifiers_excluded = False
       print(localisations[l])
       if "modifiers" in localisations[l] and exclude_modifiers is not None:
-        for modifier in exclude_modifier:
+        for modifier in exclude_modifiers:
           if modifier in localisations[l]["modifiers"]:
             modifiers_excluded = True
             break
