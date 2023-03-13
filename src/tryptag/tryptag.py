@@ -191,7 +191,6 @@ class TrypTag:
     for l in range(len(localisations)):
       # check if the current localisation term should be exlcuded from matching based on modifiers
       modifiers_excluded = False
-      print(localisations[l])
       if "modifiers" in localisations[l] and exclude_modifiers is not None:
         for modifier in exclude_modifiers:
           if modifier in localisations[l]["modifiers"]:
