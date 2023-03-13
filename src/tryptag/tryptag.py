@@ -13,7 +13,7 @@ class TrypTag:
     # master zenodo record id
     self.master_zenodo_id = 6862289 # tryptag
     #self.master_zenodo_id = 7258722 # targeted bsf
-    self._data_cache_size = 222 * float(17 << 30) + float(25 << 30) # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
+    self._data_cache_size = 222 * 17 * float(2 << 30) + 25 * float(2 << 30) # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
 
     # variables which will contain tryptag data
     self.gene_list = None
