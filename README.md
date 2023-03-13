@@ -15,7 +15,7 @@ To uninstall also use `pip`:
 pip uninstall tryptag
 ```
 
-`tryptag` requires several python modules: `numpy` `scikit-image`, `progressbar` and `filelock`. These should be installed using `pip`.
+`tryptag` requires several python modules: `numpy` `scikit-image`, `progressbar2` and `filelock`. These should be installed using `pip`.
 
 ## Quickstart guide
 
