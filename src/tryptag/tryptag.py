@@ -185,10 +185,24 @@ class TrypTag:
   # searches for a match of each term in a localisation list (ie. annotation of a gene id/terminus localisation)
   # against a query localisation term, unless that localisation has a modifier in the exclude_modifiers list
   # if match_subterms is True, then also matches aganst parent structures of the localisation term
-  def _localisation_match(self, localisations, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"]):
+  def _localisation_match(self, localisations, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
     self.fetch_ontologies()
+    # lead to keyerror if query_term not in ontology
+    ont = self.localisation_ontology[query_term]
     # iterate through each annotated localisation
     for l in range(len(localisations)):
+      # check if any necessary modifiers are present
+      modifiers_included = True
+      if include_modifiers is not None:
+        modifiers_count = 0
+        if "modifiers" in localisations[l]:
+          for modifier in include_modifiers:
+            if modifier in localisations[l]["modifiers"]:
+              modifiers_count += 1
+        if modifiers_count < len(include_modifiers):
+          modifiers_included = False
+      if modifiers_included == False:
+        break
       # check if the current localisation term should be exlcuded from matching based on modifiers
       modifiers_excluded = False
       if "modifiers" in localisations[l] and exclude_modifiers is not None:
@@ -197,13 +211,14 @@ class TrypTag:
             modifiers_excluded = True
             break
       # if not excluded based on modifiers, search for an annotation query_term match
-      if modifiers_excluded == False:
-        # exact match
-        if localisations[l]["term"] == query_term:
-          return True
-        # parent match, if matching subterms
-        if match_subterms and query_term in self.localisation_ontology[localisations[l]["term"]]["parent"]:
-          return True
+      if modifiers_excluded == True:
+        break
+      # exact match
+      if localisations[l]["term"] == query_term:
+        return True
+      # parent match, if matching subterms
+      if match_subterms == True and query_term in self.localisation_ontology[localisations[l]["term"]]["parent"]:
+        return True
     # no matches, so return false
     return False
 
@@ -213,7 +228,6 @@ class TrypTag:
   def localisation_match(self, gene_id, terminus, query_term):
     # get gene localisation
     self.fetch_gene_list()
-    self.fetch_ontologies()
     if gene_id in self.gene_list:
       if terminus in self.gene_list[gene_id]:
         localisation = self.gene_list[gene_id][terminus]["loc"]
