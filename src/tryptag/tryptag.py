@@ -9,9 +9,11 @@ class TrypTag:
     # user setting: remove zip files after download (~halves data cache size)
     self.remove_zip_files = False
 
+    # MAGIC NUMBERS:
     # master zenodo record id
     self.master_zenodo_id = 6862289 # tryptag
     #self.master_zenodo_id = 7258722 # targeted bsf
+    self._data_cache_size = 6 * float(2 << 40) # 6 TiB
 
     # variables which will contain tryptag data
     self.gene_list = None
@@ -138,10 +140,15 @@ class TrypTag:
     self.fetch_gene_list()
     if terminus in self.gene_list[gene_id]:
       import os
+      import shutil
       # check if the data cache directory exists, and make if not
       if not os.path.isdir(self.data_cache_path):
         if self.print_status: print("Making data cache directory: "+self.data_cache_path)
         os.mkdir(self.data_cache_path)
+        # check disk usage
+        total, used, free = shutil.disk_usage(self.data_cache_path)
+        if free < self._data_cache_size:
+          if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 2))+" TiB available !")
       # target paths for zip file and data subdirectory
       plate = self.gene_list[gene_id][terminus]["plate"]
       zip_path = os.path.join(self.data_cache_path, plate+".zip")
