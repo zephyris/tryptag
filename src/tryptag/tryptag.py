@@ -572,7 +572,7 @@ class TrypTag:
   def analyse_list(self, list, function):
     for i in range(len(list)):
       self.fetch_data(list[i]["gene_id"], list[i]["terminus"])
-      list[i]["result"] = function(gene_id, terminus)
+      list[i]["result"] = function(list[i]["gene_id"], list[i]["terminus"])
     return list
   
   # Gets a list of all genes and analyses
