@@ -31,6 +31,14 @@ class TrypTag:
     self._thresholds_sk = None
     self._channels_sk = None
 
+    # helpful values
+    self.parental_genelist = [
+      {"gene_id": "wild-type.1.0h", "terminus": "n"},
+      {"gene_id": "wild-type.1.2h", "terminus": "n"},
+      {"gene_id": "wild-type.2.0h", "terminus": "n"},
+      {"gene_id": "wild-type.2.2h", "terminus": "n"}
+    ]
+
   # function to fetch text from a zenodo url, respecting request rate limits
   def _fetch_zenodo_text(self, url):
     from urllib.request import urlopen
@@ -181,13 +189,17 @@ class TrypTag:
       # load and parse to flat dict of terms with parent and children names
       self.localisation_ontology = self._parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
 
-  # master localisation search function
-  # searches for a match of each term in a localisation list (ie. annotation of a gene id/terminus localisation)
-  # against a query localisation term, unless that localisation has a modifier in the exclude_modifiers list
+  # localisation match function for searches
+  # searches for a match of each term in a localisation list for a gene id and terminus against
+  # a query localisation term, unless that localisation has a modifier in the exclude_modifiers list
   # if match_subterms is True, then also matches aganst parent structures of the localisation term
-  def _localisation_match(self, localisations, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
+  # if include_modifiers is not None, then it must also match all of them
+  def localisation_match(self, gene_id, terminus, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
+    # get query localisation
+    self.fetch_gene_list()
+    localisations = self.gene_list[gene_id][terminus]["loc"]
+    # get ontology, and lead to keyerror if query_term not in ontology
     self.fetch_ontologies()
-    # lead to keyerror if query_term not in ontology
     ont = self.localisation_ontology[query_term]
     # iterate through each annotated localisation
     for l in range(len(localisations)):
@@ -222,18 +234,21 @@ class TrypTag:
     # no matches, so return false
     return False
 
-  # simple localisation match, forgiving of querying nonexistent data
-  # checks if a query term match any of a gene id/terminus' annotations or their parents
-  # does not match if the gene id/terminus' annotation for that structure has a weak or <10% modifier
-  def localisation_match(self, gene_id, terminus, query_term):
-    # get gene localisation
+  # get a list of gene hits from a localisation_match
+  def localisation_search(self, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
+    # get gene list
     self.fetch_gene_list()
-    if gene_id in self.gene_list:
-      if terminus in self.gene_list[gene_id]:
-        localisation = self.gene_list[gene_id][terminus]["loc"]
-        # test for localisation match
-        return self._localisation_match(localisation, query_term)
-    return False
+    # check all against query
+    hits = []
+    for gene_id in self.gene_list:
+      for terminus in ["n", "c"]:
+        if terminus in self.gene_list[gene_id]:
+          if self.localisation_match(gene_id, terminus, query_term, match_subterms=match_subterms, exclude_modifiers=exclude_modifiers, include_modifiers=include_modifiers):
+            hits.append({
+              "gene_id": gene_id,
+              "terminus": terminus
+            })
+    return hits
 
   # general progress bar function
   def _show_progress_bar(self, block_num, block_size, total_size):

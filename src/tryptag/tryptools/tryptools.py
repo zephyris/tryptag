@@ -143,9 +143,10 @@ def cell_morphology_analysis(pth, dth, dna):
   # get k/n positions along midline
   dna_objects = k_objects + n_objects
   if "midline" in morphology:
+    # determine nearest point from dna centroid to midline, ie. position along midline
     for object in dna_objects:
       object["midline_index"] = scipy.spatial.distance.cdist(numpy.array([[object["y"]], [object["x"]]]).reshape(-1,1), numpy.array(morphology["midline"]).reshape(-1,1)).argmin()
-    # orient cell from most terminus-proximal kinetoplast
+    # if at least one kinetoplast, orient cell with anterior at the most terminus-proximal kinetoplast
     if len(k_objects) > 0:
       # check positions of kinetoplasts along cell midline from both ends
       min_k_1 = len(morphology["midline"])
@@ -161,13 +162,14 @@ def cell_morphology_analysis(pth, dth, dna):
         morphology["midline"].reverse()
         for object in dna_objects:
           object["midline_index"] = len(morphology["midline"]) - object["midline_index"]
-      # cell anterior and posterior coordinates
+      # add cell anterior and posterior coordinates to morphology object
       morphology["anterior"] = morphology["midline"][0]
       morphology["posterior"] = morphology["midline"][-1]
-      # distance along midline
+      # calculate actual distance along midline
       distance = [0]
       root2 = 2 ** 0.5
       for i in range(1, len(morphology["midline"])):
+        # step length 1 for orthogonal adjacent, root2 for diagonal adjacent
         if abs(morphology["midline"][i][0] - morphology["midline"][i-1][0]) == 1 and abs(morphology["midline"][i][1] - morphology["midline"][i-1][1]) == 1:
           distance.append(distance[-1] + root2)
         else:
