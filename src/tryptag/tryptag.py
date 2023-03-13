@@ -6,14 +6,14 @@ class TrypTag:
     # user setting: path in which to cache image data (up to ~8Tb without zip file, ~16Tb with)
     self.data_cache_path = "_tryptag_cache"
 
-    # user setting: remove zip files after download (~halves data cache size)
+    # user setting: remove zip files after download (~doubles data cache size if False)
     self.remove_zip_files = True
 
     # MAGIC NUMBERS:
     # master zenodo record id
     self.master_zenodo_id = 6862289 # tryptag
     #self.master_zenodo_id = 7258722 # targeted bsf
-    self._data_cache_size = 6 * float(2 << 40) # 6 TiB
+    self._data_cache_size = 222 * float(17 << 30) + float(25 << 30) # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
 
     # variables which will contain tryptag data
     self.gene_list = None
@@ -51,7 +51,8 @@ class TrypTag:
     zenodo_record_id = str(zenodo_json["id"])
     return zenodo_json
 
-  # fetch gene list/metadata, recording information in self.gene_list and self.zenodo_index
+  # fetch gene list/metadata
+  # records information in self.gene_list and self.zenodo_index
   def fetch_gene_list(self):
     # if the global variable is None then not loaded yet
     if self.gene_list is None:
@@ -64,6 +65,7 @@ class TrypTag:
       # load zenodo record index
       if self.zenodo_index is None:
         # load DOI index
+        # TODO: Reformat to use URL from _fetch_zenodo_record_json
         self.zenodo_index = {}
         url = "https://zenodo.org/record/"+zenodo_record_id+"/files/plate_doi_index.tsv?download=1"
         if self.print_status: print("  Fetching plate to Zenodo ID mapping from: "+url)
@@ -74,6 +76,7 @@ class TrypTag:
           doi_data["master_record_id"] = line[0].split(".")[-1]
           self.zenodo_index[line[1]] = doi_data
       # load localisations table
+      # TODO: Reformat to use URL from _fetch_zenodo_record_json
       self.gene_list = {}
       url = "https://zenodo.org/record/"+zenodo_record_id+"/files/localisations.tsv?download=1"
       if self.print_status: print("  Fetching gene data table from: "+url)
@@ -107,6 +110,7 @@ class TrypTag:
               terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
               self.gene_list[line[0]][t] = terminus_data
 
+  # general progress bar function
   def _show_progress_bar(self, block_num, block_size, total_size):
     import progressbar
     if self._progress_bar is None:
@@ -119,7 +123,7 @@ class TrypTag:
       self._progress_bar.finish()
       self._progress_bar = None
 
-  # md5 hash function for checking zip integrity
+  # md5 hash function (for checking zip integrity)
   def _file_md5_hash(self, path, blocksize = 2**20):
     import hashlib
     m = hashlib.md5()
@@ -161,8 +165,8 @@ class TrypTag:
       # setup plate-specific lock for threadsafe zip download
       from filelock import FileLock
       lock = FileLock(ziplock_path)
-      # download zip
       lock.acquire()
+      # download zip
       try:
         if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
           print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
@@ -201,8 +205,8 @@ class TrypTag:
         lock.release()
       # setup plate-specific lock for threadsafe decompression
       lock = FileLock(dirlock_path)
-      # download zip
       lock.acquire()
+      # decompress zip
       try:
         if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
           # unzip data
@@ -423,6 +427,6 @@ class TrypTag:
   # opens a custom cell from a field of view
   # instead of using tryptag thresholded phase and dna images, user-provided phathr and dnathr (uint8, 255 = object)
   # crop_centre is the (x, y) tuple around which to crop
-  # fill_centre is a (x, y) tuple of a pixel which is in an object (255) in phathr
+  # fill_centre is a (x, y) tuple of a pixel which is in the target cell object (255) in phathr
   def open_cell_custom(self, gene, terminus, field, phathr, dnathr, crop_centre, fill_centre, angle = False, rotate = False, width = 323):
     return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = phathr, dnathr = dnathr, angle = angle, rotate = rotate, width = width)
