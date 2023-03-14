@@ -1,19 +1,37 @@
 class TrypTag:
-  def __init__(self):
+  def __init__(
+      self,
+      verbose=True,
+      data_cache_path="./_tryptag_cache",
+      remove_zip_files=True,
+      master_zenodo_id=6862289,
+      data_cache_size=222 * 17 * float(2 << 30) + 25 * float(2 << 30), # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
+      um_per_px=6.5 / 63,
+  ):
+    """Initialise TrypTag data access object
+    
+    Keyword arguments:
+    verbose -- print verbose output from accessing data (default `True`)
+    data_cache_path -- the directory that will hold the downloaded TrypTag data (default `./_tryptag_cache`, requires up to 8Tb)
+    remove_zip_files -- whether to remove zip files after download and extraction (default `True`, doubles data cache size if `False`)
+    master_zenodo_id -- Zenodo ID of the master TrypTag deposition (default `6862289`, do not change unless you know what you're doing)
+    data_cache_size -- Size (in bytes) of the data cache (default chosen for TrypTag's 222 plates, roughly 3.8 Tb)
+    um_per_px -- physical pixel size / corrected magnification
+    """
     # user setting: verbose output from accessing data
-    self.print_status = True
+    self.print_status = verbose
 
     # user setting: path in which to cache image data (up to ~8Tb without zip file, ~16Tb with)
-    self.data_cache_path = "_tryptag_cache"
+    self.data_cache_path = data_cache_path
 
     # user setting: remove zip files after download (~doubles data cache size if False)
-    self.remove_zip_files = True
+    self.remove_zip_files = remove_zip_files
 
     # MAGIC NUMBERS:
     # master zenodo record id
-    self.master_zenodo_id = 6862289 # tryptag
+    self.master_zenodo_id = master_zenodo_id # tryptag
     #self.master_zenodo_id = 7258722 # targeted bsf
-    self._data_cache_size = 222 * 17 * float(2 << 30) + 25 * float(2 << 30) # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
+    self._data_cache_size = data_cache_size
 
     # variables which will contain tryptag data
     self.gene_list = None
@@ -21,7 +39,7 @@ class TrypTag:
     self.localisation_ontology = None
 
     # image properties
-    self.um_per_px = 6.5 / 63 # physical pixel size / corrected magnification
+    self.um_per_px = um_per_px
 
     # verbose progress bar for file download
     self._progress_bar = None
