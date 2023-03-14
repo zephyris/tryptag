@@ -1,3 +1,18 @@
+from functools import cached_property
+import urllib.request
+import os
+import shutil
+import glob
+import urllib.request
+from zipfile import ZipFile, BadZipFile
+
+import numpy
+import progressbar
+from filelock import FileLock
+import skimage.io
+import skimage.morphology
+import skimage.transform
+
 class TrypTag:
   def __init__(
       self,
@@ -270,7 +285,6 @@ class TrypTag:
 
   # general progress bar function
   def _show_progress_bar(self, block_num, block_size, total_size):
-    import progressbar
     if self._progress_bar is None:
       self._progress_bar = progressbar.ProgressBar(maxval=total_size)
       self._progress_bar.start()
@@ -297,12 +311,6 @@ class TrypTag:
   # updates self.gene_list and self.zenodo_index
   # places data in self.data_cache_path
   def fetch_data(self, gene_id, terminus):
-    import os
-    import shutil
-    import glob
-    import urllib.request
-    from zipfile import ZipFile
-    from filelock import FileLock
     terminus = terminus.lower()
     # load tryptag data, if not already
     self.fetch_gene_list()
@@ -415,7 +423,7 @@ class TrypTag:
               os.remove(zip_path+".md5")
             if self.print_status:
               print("  Decompressed "+str(count_decompressed)+" fields of view")
-          except BadZipfile:
+          except BadZipFile:
             print ("! Zip file invalid: "+plate+".zip !")
             if self.remove_zip_files: os.remove(zip_path)
       finally:
@@ -501,9 +509,6 @@ class TrypTag:
   # [pha, mng, dna, pth, dth]
   # channel images are mode F, 32-bit float, threshold images are mode L, 8 bit (0 or 255)
   def open_field(self, gene, terminus, field):
-    import skimage.io
-    import numpy
-    import os
     terminus = terminus.lower()
     self.fetch_data(gene, terminus)
     field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene][terminus]["plate"], gene+"_4_"+terminus.upper()+"_"+str(field + 1))
@@ -529,9 +534,6 @@ class TrypTag:
 
   # master function for opening a cell
   def _open_cell(self, gene, terminus, field, crop_centre, fill_centre, phathr = None, dnathr = None, angle = 0, rotate = False, width = 323):
-    import skimage.morphology
-    import skimage.transform
-    import numpy
     if rotate:
       width_inter = width * 1.5 # greater than width * 2**0.5
       height = round(width / 2)
