@@ -122,7 +122,7 @@ class TrypTag:
     if self.gene_list is None:
       import urllib.request
       # fetch Zenodo record JSON, to get latest version doi
-      print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
+      if self.print_status: print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
       zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
       zenodo_record_id = str(zenodo_json["id"])
       if self.print_status: print("  Using latest Zenodo version, record ID: "+zenodo_record_id)
