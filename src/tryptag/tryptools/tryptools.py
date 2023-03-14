@@ -11,7 +11,8 @@ def cell_signal_analysis(pth, mng):
   lab = skimage.measure.label(pth)
   props_table = skimage.measure.regionprops_table(lab, mng, properties=("area", "intensity_max", "intensity_mean"))
   return {
-    "cell_area": props_table["area"][0], "mean": props_table["intensity_mean"][0],
+    "cell_area": props_table["area"][0],
+    "mng_mean": props_table["intensity_mean"][0],
     "mng_sum": props_table["intensity_mean"][0] * props_table["area"][0],
     "mng_max": props_table["intensity_max"][0]
   }
