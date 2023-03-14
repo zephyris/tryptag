@@ -597,4 +597,4 @@ class TrypTag:
               "gene_id": gene_id,
               "terminus": terminus
           })
-    return (self.analyse_cells(list, fuction))
+    return (self.analyse_cells(list, function))
