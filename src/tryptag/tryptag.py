@@ -209,10 +209,10 @@ class TrypTag:
 
   # localisation match function for searches
   # searches for a match of each term in a localisation list for a gene id and terminus against
-  # a query localisation term, unless that localisation has a modifier in the exclude_modifiers list
+  # a query localisation term, unless that localisation has a modifier in the required_modifiers list
   # if match_subterms is True, then also matches aganst parent structures of the localisation term
   # if include_modifiers is not None, then it must also match all of them
-  def localisation_match(self, gene_id, terminus, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
+  def localisation_match(self, gene_id, terminus, query_term, match_subterms=True, required_modifiers=["weak", "<10%"], include_modifiers=None):
     # get query localisation
     self.fetch_gene_list()
     localisations = self.gene_list[gene_id][terminus]["loc"]
@@ -235,8 +235,8 @@ class TrypTag:
         break
       # check if the current localisation term should be exlcuded from matching based on modifiers
       modifiers_excluded = False
-      if "modifiers" in localisations[l] and exclude_modifiers is not None:
-        for modifier in exclude_modifiers:
+      if "modifiers" in localisations[l] and required_modifiers is not None:
+        for modifier in required_modifiers:
           if modifier in localisations[l]["modifiers"]:
             modifiers_excluded = True
             break
@@ -253,7 +253,7 @@ class TrypTag:
     return False
 
   # get a list of gene hits from a localisation_match
-  def localisation_search(self, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
+  def localisation_search(self, query_term, match_subterms=True, required_modifiers=["weak", "<10%"], include_modifiers=None):
     # get gene list
     self.fetch_gene_list()
     # check all against query
@@ -261,7 +261,7 @@ class TrypTag:
     for gene_id in self.gene_list:
       for terminus in ["n", "c"]:
         if terminus in self.gene_list[gene_id]:
-          if self.localisation_match(gene_id, terminus, query_term, match_subterms=match_subterms, exclude_modifiers=exclude_modifiers, include_modifiers=include_modifiers):
+          if self.localisation_match(gene_id, terminus, query_term, match_subterms=match_subterms, required_modifiers=required_modifiers, include_modifiers=include_modifiers):
             hits.append({
               "gene_id": gene_id,
               "terminus": terminus
