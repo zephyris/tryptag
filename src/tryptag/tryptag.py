@@ -1,3 +1,18 @@
+from functools import cached_property
+import urllib.request
+import os
+import shutil
+import glob
+import urllib.request
+from zipfile import ZipFile, BadZipFile
+
+import numpy
+import progressbar
+from filelock import FileLock
+import skimage.io
+import skimage.morphology
+import skimage.transform
+
 class TrypTag:
   def __init__(
       self,
@@ -32,11 +47,6 @@ class TrypTag:
     self.master_zenodo_id = master_zenodo_id # tryptag
     #self.master_zenodo_id = 7258722 # targeted bsf
     self._data_cache_size = data_cache_size
-
-    # variables which will contain tryptag data
-    self.gene_list = None
-    self.zenodo_index = None
-    self.localisation_ontology = None
 
     # image properties
     self.um_per_px = um_per_px
@@ -115,64 +125,69 @@ class TrypTag:
         annotation_list.append(entry)
     return annotation_list
 
+  @cached_property
+  def zenodo_record_id(self):
+    zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
+    return str(zenodo_json["id"])
+
+  @cached_property
+  def zenodo_index(self):
+    # load zenodo record index
+    # load DOI index
+    # TODO: Reformat to use URL from _fetch_zenodo_record_json
+    zenodo_index = {}
+    url = "https://zenodo.org/record/"+self.zenodo_record_id+"/files/plate_doi_index.tsv?download=1"
+    if self.print_status: print("  Fetching plate to Zenodo ID mapping from: "+url)
+    response = urllib.request.urlopen(url)
+    for line in response:
+      line = line.decode(response.info().get_param("charset") or "utf-8-sig").splitlines()[0].split("\t")
+      doi_data = {}
+      doi_data["master_record_id"] = line[0].split(".")[-1]
+      zenodo_index[line[1]] = doi_data
+    return zenodo_index
+
   # fetch gene list/metadata
   # records information in self.gene_list and self.zenodo_index
-  def fetch_gene_list(self):
-    # if the global variable is None then not loaded yet
-    if self.gene_list is None:
-      import urllib.request
-      # fetch Zenodo record JSON, to get latest version doi
-      if self.print_status: print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
-      zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
-      zenodo_record_id = str(zenodo_json["id"])
-      if self.print_status: print("  Using latest Zenodo version, record ID: "+zenodo_record_id)
-      # load zenodo record index
-      if self.zenodo_index is None:
-        # load DOI index
-        # TODO: Reformat to use URL from _fetch_zenodo_record_json
-        self.zenodo_index = {}
-        url = "https://zenodo.org/record/"+zenodo_record_id+"/files/plate_doi_index.tsv?download=1"
-        if self.print_status: print("  Fetching plate to Zenodo ID mapping from: "+url)
-        response = urllib.request.urlopen(url)
-        for line in response:
-          line = line.decode(response.info().get_param("charset") or "utf-8-sig").splitlines()[0].split("\t")
-          doi_data = {}
-          doi_data["master_record_id"] = line[0].split(".")[-1]
-          self.zenodo_index[line[1]] = doi_data
-      # load localisations table
-      # TODO: Reformat to use URL from _fetch_zenodo_record_json
-      self.gene_list = {}
-      url = "https://zenodo.org/record/"+zenodo_record_id+"/files/localisations.tsv?download=1"
-      if self.print_status: print("  Fetching gene data table from: "+url)
-      response = urllib.request.urlopen(url)
-      for line in response:
-        line = line.decode(response.info().get_param("charset") or "utf-8-sig").splitlines()[0].split("\t")
-        if line[0] == "Gene ID":
-          indices = {}
-          for l in range(len(line)):
-            indices[line[l]] = l
-        else:
-          # if not the header line, grab gene data
-          self.gene_list[line[0]] = {}
-          termini = ["c", "n"]
-          for t in termini:
-            p = t.upper() + " "
-            if line[indices[p + "status"]] == "cell line generated":
-              # data from columns which must be present
-              terminus_data = {
-                "plate": line[indices[p + "plate and well"]].split(" ")[0],
-                "well": line[indices[p + "plate and well"]].split(" ")[1],
-                "loc": self._parse_localisation_annotation(line[indices[p + "localisation"]]),
-                "primer_f": line[indices[p + "primer F"]],
-                "primer_r": line[indices[p + "primer R"]]
-              }
-              # additional data, optional columns
-              if p+" classified as faint" in indices:
-                terminus_data["signl_low"]: line[indices[p + "fainter than parental"]]
-                terminus_data["signal_background"]: line[indices[p + "classified as faint"]]
-              # look up zenodo id
-              terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
-              self.gene_list[line[0]][t] = terminus_data
+  @cached_property
+  def gene_list(self):  
+    # fetch Zenodo record JSON, to get latest version doi
+    print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
+    if self.print_status: print("  Using latest Zenodo version, record ID: "+self.zenodo_record_id)
+    # load localisations table
+    # TODO: Reformat to use URL from _fetch_zenodo_record_json
+    gene_list = {}
+    url = "https://zenodo.org/record/"+self.zenodo_record_id+"/files/localisations.tsv?download=1"
+    if self.print_status: print("  Fetching gene data table from: "+url)
+    response = urllib.request.urlopen(url)
+    for line in response:
+      line = line.decode(response.info().get_param("charset") or "utf-8-sig").splitlines()[0].split("\t")
+      if line[0] == "Gene ID":
+        indices = {}
+        for l in range(len(line)):
+          indices[line[l]] = l
+      else:
+        # if not the header line, grab gene data
+        gene_list[line[0]] = {}
+        termini = ["c", "n"]
+        for t in termini:
+          p = t.upper() + " "
+          if line[indices[p + "status"]] == "cell line generated":
+            # data from columns which must be present
+            terminus_data = {
+              "plate": line[indices[p + "plate and well"]].split(" ")[0],
+              "well": line[indices[p + "plate and well"]].split(" ")[1],
+              "loc": self._parse_localisation_annotation(line[indices[p + "localisation"]]),
+              "primer_f": line[indices[p + "primer F"]],
+              "primer_r": line[indices[p + "primer R"]]
+            }
+            # additional data, optional columns
+            if p+" classified as faint" in indices:
+              terminus_data["signl_low"]: line[indices[p + "fainter than parental"]]
+              terminus_data["signal_background"]: line[indices[p + "classified as faint"]]
+            # look up zenodo id
+            terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
+            gene_list[line[0]][t] = terminus_data
+    return gene_list
 
   # recursively called function to build a list of localisation terms
   # Adds a list of parents, a hierachy down to the root node
@@ -200,12 +215,12 @@ class TrypTag:
     return terms
 
   # load ontologies for intelligent localisation based searching
-  def fetch_ontologies(self):
-    if self.localisation_ontology is None:
-      import json
-      zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
-      # load and parse to flat dict of terms with parent and children names
-      self.localisation_ontology = self._parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
+  @cached_property
+  def localisation_ontology(self):
+    import json
+    zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
+    # load and parse to flat dict of terms with parent and children names
+    return self._parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
 
   # localisation match function for searches
   # searches for a match of each term in a localisation list for a gene id and terminus against
@@ -214,10 +229,8 @@ class TrypTag:
   # if required_modifiers is not None, then it must also match all of them
   def localisation_match(self, gene_id, terminus, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], required_modifiers=None):
     # get query localisation
-    self.fetch_gene_list()
     localisations = self.gene_list[gene_id][terminus]["loc"]
     # get ontology, and lead to keyerror if query_term not in ontology
-    self.fetch_ontologies()
     ont = self.localisation_ontology[query_term]
     # iterate through each annotated localisation
     for l in range(len(localisations)):
@@ -253,9 +266,7 @@ class TrypTag:
     return False
 
   # get a list of gene hits from a localisation_match
-  def localisation_search(self, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], required_modifiers=None):
-    # get gene list
-    self.fetch_gene_list()
+  def localisation_search(self, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None):
     # check all against query
     hits = []
     for gene_id in self.gene_list:
@@ -270,7 +281,6 @@ class TrypTag:
 
   # general progress bar function
   def _show_progress_bar(self, block_num, block_size, total_size):
-    import progressbar
     if self._progress_bar is None:
       self._progress_bar = progressbar.ProgressBar(maxval=total_size)
       self._progress_bar.start()
@@ -297,15 +307,8 @@ class TrypTag:
   # updates self.gene_list and self.zenodo_index
   # places data in self.data_cache_path
   def fetch_data(self, gene_id, terminus):
-    import os
-    import shutil
-    import glob
-    import urllib.request
-    from zipfile import ZipFile
-    from filelock import FileLock
     terminus = terminus.lower()
     # load tryptag data, if not already
-    self.fetch_gene_list()
     if terminus in self.gene_list[gene_id]:
       # check if the data cache directory exists, and make if not
       if not os.path.isdir(self.data_cache_path):
@@ -415,7 +418,7 @@ class TrypTag:
               os.remove(zip_path+".md5")
             if self.print_status:
               print("  Decompressed "+str(count_decompressed)+" fields of view")
-          except BadZipfile:
+          except BadZipFile:
             print ("! Zip file invalid: "+plate+".zip !")
             if self.remove_zip_files: os.remove(zip_path)
       finally:
@@ -444,9 +447,8 @@ class TrypTag:
   # checks if cached image data is available for gene and terminus
   def check_if_cached(self, gene_id, terminus):
     # False if gene_list or zenodo_index have not been loaded yet
-    if self.gene_list is None:
-      return False
-    if self.zenodo_index is None:
+    # Check for attributes in `__dict__` - `functools.cached_property` writes an attribute of the same name
+    if not (("gene_list" in self.__dict__) and ("zenodo_index" in self.__dict__)):
       return False
     # path for data subdirectory
     plate = self.gene_list[gene_id][terminus]["plate"]
@@ -461,7 +463,6 @@ class TrypTag:
   def check_data_cache(self):
     import os
     # load tryptag data, if not already
-    self.fetch_gene_list()
     print("Checking data cache for errors")
     for plate in self.zenodo_index:
       zip_path = os.path.join(self.data_cache_path, plate+".zip")
@@ -491,7 +492,6 @@ class TrypTag:
 
   # force load of all data by iterating through every gene and terminus
   def fetch_all_data(self):
-    self.fetch_gene_list()
     for gene in self.gene_list:
       for terminus in ["c", "n"]:
         self.fetch_data(gene, terminus)
@@ -501,9 +501,6 @@ class TrypTag:
   # [pha, mng, dna, pth, dth]
   # channel images are mode F, 32-bit float, threshold images are mode L, 8 bit (0 or 255)
   def open_field(self, gene, terminus, field):
-    import skimage.io
-    import numpy
-    import os
     terminus = terminus.lower()
     self.fetch_data(gene, terminus)
     field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene][terminus]["plate"], gene+"_4_"+terminus.upper()+"_"+str(field + 1))
@@ -529,9 +526,6 @@ class TrypTag:
 
   # master function for opening a cell
   def _open_cell(self, gene, terminus, field, crop_centre, fill_centre, phathr = None, dnathr = None, angle = 0, rotate = False, width = 323):
-    import skimage.morphology
-    import skimage.transform
-    import numpy
     if rotate:
       width_inter = width * 1.5 # greater than width * 2**0.5
       height = round(width / 2)
@@ -595,7 +589,6 @@ class TrypTag:
   
   # Gets a list of all genes and analyses
   def analyse_all(self, function):
-    self.fetch_gene_list()
     list = []
     for gene_id in self.gene_list:
       for terminus in ["n", "c"]:
@@ -604,4 +597,4 @@ class TrypTag:
               "gene_id": gene_id,
               "terminus": terminus
           })
-    return (self.analyse_cells(list, fuction))
+    return (self.analyse_cells(list, function))

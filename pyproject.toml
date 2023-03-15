@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Python module for accessing and handling TrypTag genome-wide protein localisation project data."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies = [
 	"numpy",
 	"scikit-image",
