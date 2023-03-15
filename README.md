@@ -59,7 +59,6 @@ for field in range(5):
 You can access the `tryptag.gene_list` dict for more intelligent iteration. To iterate through all cells for all gene ids and termini that exist, ie. automated analysis of the entire ~5,000,000 cell dataset:
 
 ```
-tryptag.fetch_gene_list()
 termini = ["n", "c"]
 for gene_id in tryptag.gene_list:
     for terminus in termini:
@@ -84,7 +83,6 @@ tryptag = TrypTag()
 To view data about a tagged cell line by gene id, for example `Tb927.7.1920`:
 
 ```
-tryptag.fetch_gene_list()
 print(tryptag.gene_list["Tb927.7.1920"])
 ```
 
