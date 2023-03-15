@@ -76,14 +76,14 @@ for gene_id in tryptag.gene_list:
 ### Tagging metadata
 You can use `tryptag` to access data about tagged cell lines. In python, import the module and set up a `TrypTag` instance:
 
-```
+```python
 from tryptag import TrypTag
 tryptag = TrypTag()
 ```
 
 To view data about a tagged cell line by gene id, for example `Tb927.7.1920`:
 
-```
+```python
 tryptag.fetch_gene_list()
 print(tryptag.gene_list["Tb927.7.1920"])
 ```
@@ -91,7 +91,7 @@ print(tryptag.gene_list["Tb927.7.1920"])
 This will print an object containing information about the tagging of this gene.
 If tagging data for a gene id does not exist then this will give a `KeyError` error. You can handle this by using:
 
-```
+```python
 gene_id = "Tb927.not.arealgeneid"
 if gene_id in tryptag.gene_list:
     print(tryptag.gene_list[gene_id])
@@ -101,7 +101,7 @@ else:
 
 or
 
-```
+```python
 gene_id = "Tb927.not.arealgeneid"
 try:
     print(tryptag.gene_list[gene_id])
@@ -111,7 +111,7 @@ except:
 
 Tagging terminus-specific information can be accessed similarly, using `n` or `c` for the terminus. Again, trying to access data for a terminus which lacks data will give a `KeyError` error:
 
-```
+```python
 gene_id = "Tb927.7.1920"
 terminus = "n"
 if gene_id in tryptag.gene_list:
@@ -126,7 +126,7 @@ else:
 ### Microscopy data
 You can use `tryptag` to download the microscopy data. In python, import the module and set up a `TrypTag` instance:
 
-```
+```python
 from tryptag import TrypTag
 tryptag = TrypTag()
 ```
@@ -137,13 +137,13 @@ It then downloads and decompresses the data to the `data_cache_path` directory.
 
 This will take a long time, to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~10 to 20 Gb.
 
-```
+```python
 tryptag.fetch_data("Tb927.7.1920", "n")
 ```
 
 This will give a `KeyError` error if there is no data for that terminus. To fetch, for example, image data for a list of gene ids of interest, you could use:
 
-```
+```python
 gene_ids = ["Tb927.7.1920", "Tb927.1.2670", "Tb927.11.1150"]
 termini = ["n", "c"]
 for gene_id in gene_ids: 
@@ -181,13 +181,13 @@ The default cache location is `_tryptag_data` within the current working directo
 Make sure this is set at the start of every script:
 
 Linux/Mac:
-```
+```python
 from tryptag import TrypTag
 tryptag = TrypTag()
 tryptag.data_cache_path = "\mnt\z\my\scratch\directory"
 ```
 or Windows:
-```
+```python
 tryptag.data_cache_path = "Z:/my/scratch/directory"
 ```
 
@@ -198,7 +198,7 @@ If multiple scripts using the same `data_cache_path` simultaneously try to downl
 One script should download and decompress the image data, while the others (silently) wait until it the image data is available.
 However, for large-scale analyses, it is more robust to ensure all data is already cached. You can use `fetch_all_data` to download all image data (this will probably take more than one week!):
 
-```
+```python
 tryptag.fetch_all_data()
 ```
 
@@ -206,13 +206,13 @@ The TrypTag data may have minor errors which will be corrected over time. `fetch
 Cached image data may be an older version. `tryptag` records the MD5 hash of the source zip files. If the data source (Zenodo depositions) are updated, the MD5 hash will change.
 Cached data inconsistent MD5 hashes can be checked using:
 
-```
+```python
 tryptag.check_data_cache()
 ```
 
 `tryptag` gives quite verbose information about what it is currently doing to fetch data. To silence this output set `print_status` at the start of the script before running any `tryptag` functions:
 
-```
+```python
 from tryptag import TrypTag
 tryptag = TrypTag()
 tryptag.print_status = False
