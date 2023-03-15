@@ -151,7 +151,7 @@ class TrypTag:
   @cached_property
   def gene_list(self):  
     # fetch Zenodo record JSON, to get latest version doi
-    print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
+    if self.print_status: print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
     if self.print_status: print("  Using latest Zenodo version, record ID: "+self.zenodo_record_id)
     # load localisations table
     # TODO: Reformat to use URL from _fetch_zenodo_record_json
