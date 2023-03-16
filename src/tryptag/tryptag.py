@@ -607,7 +607,7 @@ class TrypTag:
       # if passed a gene_list then running as a spawned thread/process, and requires a new TrypTag instance
       # TODO: inherit all relevant constants, eg. master_zenodo_id
       from tryptag import TrypTag
-      current_tryptag = TrypTag(verbose=False)
+      current_tryptag = TrypTag()
       current_tryptag.gene_list = gene_list
       current_tryptag.zenodo_index = zenodo_index
     else:
