@@ -598,14 +598,80 @@ class TrypTag:
   def open_cell_custom(self, gene, terminus, field, phathr, dnathr, crop_centre, fill_centre, angle = False, rotate = False, width = 323):
     return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = phathr, dnathr = dnathr, angle = angle, rotate = rotate, width = width)
 
-  # Iterates over gene id/terminus in list of {"gene_id": gene_id, "terminus": terminus}
-  # Runs function(gene_id, terminus) and records the result as "result" in list entry
-  def analyse_list(self, list, function):
-    for i in range(len(list)):
-      self.fetch_data(list[i]["gene_id"], list[i]["terminus"])
-      list[i]["result"] = function(list[i]["gene_id"], list[i]["terminus"])
-    return list
-  
+  # worker for multiprocess/thread analysis
+  # iterates through work_list of {"gene_id": gene_id, "terminus": terminus} entries
+  # runs analysis_function on gene_id and terminus in each entry
+  # returns list of result objects {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
+  def _list_analysis_worker(self, work_list, analysis_function, gene_list=None, zenodo_index=None):
+    if gene_list is not None:
+      # if passed a gene_list then running as a spawned thread/process, and requires a new TrypTag instance
+      # TODO: inherit all relevant constants, eg. master_zenodo_id
+      from tryptag import TrypTag
+      current_tryptag = TrypTag(verbose=False)
+      current_tryptag.gene_list = gene_list
+      current_tryptag.zenodo_index = zenodo_index
+    else:
+      current_tryptag = self
+    results = []
+    for entry in work_list:
+      result = {
+        "gene_id": entry["gene_id"],
+        "terminus": entry["terminus"]
+      }
+      current_tryptag.fetch_data(entry["gene_id"], entry["terminus"])
+      current_result = analysis_function(current_tryptag, entry["gene_id"], entry["terminus"])
+      result.update({
+          "result": current_result
+      })
+      results.append(result)
+    return results
+
+  # simple handler for multiprocess/thread analysis
+  # analyses work_list of {"gene_id": gene_id, "terminus": terminus} entries
+  # uses analysis_function, which must:
+  #   take only tryptag, gene_id and terminus as arguments
+  #   not use global variables and return a single variable as a result
+  # returns a list of {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
+  def analyse_list(self, work_list, analysis_function, workers=None, mode=None):
+    import concurrent.futures
+    import multiprocessing
+    import numpy
+    # deduplicate work_list
+    dedup_work_list = []
+    for entry in work_list:
+      if entry not in dedup_work_list:
+        dedup_work_list.append(entry)
+    if mode is None:
+      # run by direct call of the _list_analysis_worker function
+      if self.print_status: print("  Single process")
+      results = self._list_analysis_worker(work_list, analysis_function)
+    else:
+      # get number of workers, default to number of cpus
+      if workers is None:
+        workers = multiprocessing.cpu_count()
+      # split dedup_work_list list into lists for each worker
+      split_work_list = numpy.array_split(dedup_work_list, workers)
+      if mode == "process":
+        # setup executor as a process pool
+        if self.print_status: print("  Parallel processes with", workers, "workers")
+        executor = concurrent.futures.ProcessPoolExecutor(max_workers=workers)
+      elif mode == "thread":
+        # setup executor as a thread pool
+        if self.print_status: print("  Parallel threads with", workers, "workers")
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+      results = []
+      futures = []
+      for i in range(len(split_work_list)):
+        # pass each split_work_list list item to a _list_analysis_worker function
+        if len(split_work_list[i]) > 0:
+          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, gene_list=self.gene_list, zenodo_index=self.zenodo_index)
+        futures.append(future)
+      for future in concurrent.futures.as_completed(futures):
+        # concatenate results as they are returned
+        results += future.result()
+      # return concatenated results
+    return results
+
   # Gets a list of all genes and analyses
   def analyse_all(self, function):
     list = []
