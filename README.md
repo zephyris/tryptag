@@ -5,13 +5,13 @@ Its primary intended use is for easy access to image data for automated image an
 ## Installation
 Install using `pip`:
 
-```
+```shell
 pip install git+https://github.com/zephyris/tryptag
 ```
 
 To uninstall also use `pip`:
 
-```
+```shell
 pip uninstall tryptag
 ```
 
