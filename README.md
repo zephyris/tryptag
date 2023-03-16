@@ -21,7 +21,7 @@ pip uninstall tryptag
 
 To use the `tryptag` module, import the `TrypTag` class and set up an instance (normally called `tryptag`):
 
-```
+```python
 from tryptag import TrypTag
 tryptag = TrypTag()
 ```
@@ -29,14 +29,14 @@ tryptag = TrypTag()
 Microscopy data is multiple fields of view per cell line.
 To open a specific field of view of a tagged cell line, access it by gene id (as used on [TriTrypDB](http://tritrypdb.org)), tagging terminus (`n` or `c`) and field index (integer):
 
-```
+```python
 [phase, mng, dna, phasethreshold, dnathreshold] = tryptag.open_field(gene_id, terminus, field)
 ```
 
 The cells in the phase threshold image are indexed and can be opened individually.
 To open a specific cell in a field:
 
-```
+```python
 [phase, mng, dna, phasethreshold, dnathreshold] = tryptag.open_cell(gene_id, terminus, field, cell)
 ```
 
@@ -44,7 +44,7 @@ Opened images are `numpy` `ndarray` objects, as used by `scikit-image`.
 
 Bear in mind that accessing a nonexistant gene id, tagging terminus, field or cell will give `KeyError` errors. For example:
 
-```
+```python
 gene_id = "Tb927.7.1920"
 terminus = "n"
 tryptag.fetch_data(gene_id, terminus)
@@ -58,7 +58,7 @@ for field in range(5):
 
 You can access the `tryptag.gene_list` dict for more intelligent iteration. To iterate through all cells for all gene ids and termini that exist, ie. automated analysis of the entire ~5,000,000 cell dataset:
 
-```
+```python
 termini = ["n", "c"]
 for gene_id in tryptag.gene_list:
     for terminus in termini:
@@ -208,12 +208,11 @@ Cached data inconsistent MD5 hashes can be checked using:
 tryptag.check_data_cache()
 ```
 
-`tryptag` gives quite verbose information about what it is currently doing to fetch data. To silence this output set `print_status` at the start of the script before running any `tryptag` functions:
+`tryptag` gives quite verbose information about what it is currently doing to fetch data. To silence this output, initialise `TrypTag` with `verbose=False`:
 
 ```python
 from tryptag import TrypTag
-tryptag = TrypTag()
-tryptag.print_status = False
+tryptag = TrypTag(verbose=False)
 # do your analysis here
 ```
 
