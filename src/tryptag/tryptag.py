@@ -67,26 +67,24 @@ class TrypTag:
       {"gene_id": "wild-type.2.2h", "terminus": "n"}
     ]
 
-"""
-    # TODO: Handy, but triggers data download on TrypTag instantiation
-    # all genes ids/termini, as a worklist
-    self.worklist_all = [
-      {
-        "gene_id": gene_id,
-        "terminus": terminus,
-      } for gene_id, terminus in
-      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if terminus in gene_entry)
-    ]
+    ## TODO: Handy, but triggers data download on TrypTag instantiation
+    ## all genes ids/termini, as a worklist
+    #self.worklist_all = [
+    #  {
+    #    "gene_id": gene_id,
+    #    "terminus": terminus,
+    #  } for gene_id, terminus in
+    #  ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if terminus in gene_entry)
+    #]
 
-    # parental dummy gene id/termini entries, as a worklist
-    self.worklist_parental = [
-      {
-        "gene_id": gene_id,
-        "terminus": terminus,
-      } for gene_id, terminus in
-      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if "wild-type" in gene_id and terminus in gene_entry)
-    ]
-"""
+    ## parental dummy gene id/termini entries, as a worklist
+    #self.worklist_parental = [
+    #  {
+    #    "gene_id": gene_id,
+    #    "terminus": terminus,
+    #  } for gene_id, terminus in
+    #  ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if "wild-type" in gene_id and terminus in gene_entry)
+    #]
 
   # function to fetch text from a zenodo url, respecting request rate limits
   def _fetch_zenodo_text(self, url):
