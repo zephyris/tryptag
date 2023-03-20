@@ -19,10 +19,11 @@ class TrypTag:
       verbose=True,
       data_cache_path="./_tryptag_cache",
       remove_zip_files=True,
-      master_zenodo_id=6862289,
-      data_cache_size=222 * 17 * float(2 << 30) + 25 * float(2 << 30), # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
-      data_cache_zipsize=222 * 14 * float(2 << 30), # 222 plates @ 14 GiB/plate
-      um_per_px=6.5 / 63,
+      master_zenodo_id=6862289, # tryptag, 7258722 for targeted bsf
+      data_cache_plates=222,
+      data_cache_platesize=17 * float(2 << 30),
+      data_cache_zipsize=14 * float(2 << 30),
+      um_per_px=6.5 / 63
   ):
     """Initialise TrypTag data access object
     
@@ -31,13 +32,15 @@ class TrypTag:
     data_cache_path -- the directory that will hold the downloaded TrypTag data (default `./_tryptag_cache`, requires up to 8Tb)
     remove_zip_files -- whether to remove zip files after download and extraction (default `True`, doubles data cache size if `False`)
     master_zenodo_id -- Zenodo ID of the master TrypTag deposition (default `6862289`, do not change unless you know what you're doing)
-    data_cache_size -- Size (in bytes) of the data cache (default chosen for TrypTag's 222 plates, roughly 3.8 Tb)
+    data_cache_plates -- Number of plates in data cache (default chosen for TrypTag's 222 plates)
+    data_cache_platesize -- Size (in bytes) of one plate directory (default chosen for TrypTag's plates, 17 Gb)
+    data_cache_zipsize -- Size (in bytes) of one plate zip file (default chosen for TrypTag's plates, 14 Gb)
     um_per_px -- physical pixel size / corrected magnification
     """
     # user setting: verbose output from accessing data
     self.print_status = verbose
 
-    # user setting: path in which to cache image data (up to ~8Tb without zip file, ~16Tb with)
+    # user setting: path in which to cache image data
     self.data_cache_path = data_cache_path
 
     # user setting: remove zip files after download (~doubles data cache size if False)
@@ -45,9 +48,12 @@ class TrypTag:
 
     # MAGIC NUMBERS:
     # master zenodo record id
-    self.master_zenodo_id = master_zenodo_id # tryptag
-    #self.master_zenodo_id = 7258722 # targeted bsf
-    self._data_cache_size = data_cache_size
+    self.master_zenodo_id = master_zenodo_id
+    self._data_cache_plates = data_cache_plates
+    self._data_cache_platesize = data_cache_platesize
+    self._data_cache_zipsize = data_cache_zipsize
+    self._data_cache_size = data_cache_plates * data_cache_platesize + data_cache_zipsize
+    self._data_cache_zipsize = data_cache_plates * data_cache_zipsize
 
     # image properties
     self.um_per_px = um_per_px
@@ -335,18 +341,28 @@ class TrypTag:
         if self.print_status: print("Making data cache directory: "+self.data_cache_path)
         os.mkdir(self.data_cache_path)
       # check current usage
+      ## full check
+      #sum_dir = 0
+      #sum_zip = 0
+      #for file in os.listdir(self.data_cache_path):
+      #  if os.path.isfile(os.path.join(self.data_cache_path, file)):
+      #    sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
+      #  elif os.path.isdir(os.path.join(self.data_cache_path, file)):
+      #    for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
+      #      sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
+      # full check too slow, use approximation
       sum_dir = 0
       sum_zip = 0
       for file in os.listdir(self.data_cache_path):
-        if os.path.isfile(os.path.join(self.data_cache_path, file)):
-          sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
-        elif os.path.isdir(os.path.join(self.data_cache_path, file)):
-          for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
-            sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
+        if file.endswith(".zip"):
+          sum_zip += self._data_cache_zipsize
+        if os.path.isdir(os.path.join(self.data_cache_path, file)):
+          sum_dir += self._data_cache_platesize
+      # full check too slow, do simplified check
       if self.print_status:
         print("Current data cache:")
-        print("  Directory usage: "+str(round(sum_dir / float(2 << 40), 4))+" TiB")
-        print("  Zip file usage: "+str(round(sum_zip / float(2 << 40), 4))+" TiB")
+        print("  Directory usage: ~"+str(round(sum_dir / float(2 << 40), 4))+" TiB")
+        print("  Zip file usage: ~"+str(round(sum_zip / float(2 << 40), 4))+" TiB")
       # check disk space
       space_required = self._data_cache_size
       if self.remove_zip_files == False:
