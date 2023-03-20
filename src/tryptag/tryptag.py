@@ -224,6 +224,13 @@ class TrypTag:
           terms[loclist[l]["name"]]["children"].append(loclist[l]["sublocalisation"][s]["name"])
         # recurse through subterms
         terms.update(self._parse_localisation_ontology(loclist[l], parent=parent + [loclist[l]["name"]]))
+    # if the root node, add a root pseudolocalisation
+    if parent == ["root"]:
+      terms["root"] = {
+        "name": "root",
+        "parent": [],
+        "children": [x["name"] for x in ontology_json["localisation"]]
+      }
     return terms
 
   # load ontologies for intelligent localisation based searching
