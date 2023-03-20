@@ -87,6 +87,7 @@ class TrypTag:
     #]
 
   # function to fetch text from a zenodo url, respecting request rate limits
+  # TODO: Cache per session(?)
   def _fetch_zenodo_text(self, url):
     from urllib.request import urlopen
     from urllib.error import HTTPError
@@ -102,7 +103,7 @@ class TrypTag:
     text = response.read().decode(response.info().get_param("charset") or "utf-8-sig")
     return text
 
-  # function to fetch zenodo record information
+  # function to fetch zenodo record information, using _fetch_zenodo_text
   def _fetch_zenodo_record_json(self, zenodo_id):
     import json
     # fetch Zenodo record JSON
@@ -111,7 +112,7 @@ class TrypTag:
     text = self._fetch_zenodo_text(url)
     return json.loads(text)
 
-  # function to fetch text from a file by name in a zenodo record, using zenodo_json 
+  # function to fetch text from a file by name in a zenodo record, using zenodo_json and _fetch_zenodo_text
   def _fetch_zenodo_record_file(self, zenodo_json, file_name):
     from urllib.request import urlopen
     from urllib.error import HTTPError
@@ -151,18 +152,15 @@ class TrypTag:
 
   @cached_property
   def zenodo_index(self):
-    # load zenodo record index
-    # load DOI index
-    # TODO: Reformat to use URL from _fetch_zenodo_record_json
+    # load plate to zenodo record index
     zenodo_index = {}
-    url = "https://zenodo.org/record/"+self.zenodo_record_id+"/files/plate_doi_index.tsv?download=1"
-    if self.print_status: print("  Fetching plate to Zenodo ID mapping from: "+url)
-    response = urllib.request.urlopen(url)
-    for line in response:
-      line = line.decode(response.info().get_param("charset") or "utf-8-sig").splitlines()[0].split("\t")
-      doi_data = {}
-      doi_data["master_record_id"] = line[0].split(".")[-1]
-      zenodo_index[line[1]] = doi_data
+    # download plate_doi_index.tsv from master record
+    zenodo_json = self._fetch_zenodo_record_json(self.zenodo_record_id)
+    lines = self._fetch_zenodo_record_file(zenodo_json, "plate_doi_index.tsv").splitlines()
+    # parse tsv to dict indexed by plateID_YYYYMMDD
+    for line in lines:
+      line = line.split("\t")
+      zenodo_index[line[1]] = {"master_record_id": line[0].split(".")[-1]}
     return zenodo_index
 
   # fetch gene list/metadata
@@ -173,13 +171,13 @@ class TrypTag:
     if self.print_status: print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
     if self.print_status: print("  Using latest Zenodo version, record ID: "+self.zenodo_record_id)
     # load localisations table
-    # TODO: Reformat to use URL from _fetch_zenodo_record_json
+    # download localisations.tsv from master record
+    zenodo_json = self._fetch_zenodo_record_json(self.zenodo_record_id)
+    lines = self._fetch_zenodo_record_file(zenodo_json, "localisations.tsv").splitlines()
     gene_list = {}
-    url = "https://zenodo.org/record/"+self.zenodo_record_id+"/files/localisations.tsv?download=1"
-    if self.print_status: print("  Fetching gene data table from: "+url)
-    response = urllib.request.urlopen(url)
-    for line in response:
-      line = line.decode(response.info().get_param("charset") or "utf-8-sig").splitlines()[0].split("\t")
+    # parse line by line, expects the first line to be headers and grab indices
+    for line in lines:
+      line = line.split("\t")
       if line[0] == "Gene ID":
         indices = {}
         for l in range(len(line)):
