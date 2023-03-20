@@ -21,6 +21,7 @@ class TrypTag:
       remove_zip_files=True,
       master_zenodo_id=6862289,
       data_cache_size=222 * 17 * float(2 << 30) + 25 * float(2 << 30), # 222 plates @ 17 GiB/plate, + 25 GiB for 1 temporary zip
+      data_cache_zipsize=222 * 14 * float(2 << 30), # 222 plates @ 14 GiB/plate
       um_per_px=6.5 / 63,
   ):
     """Initialise TrypTag data access object
@@ -333,13 +334,31 @@ class TrypTag:
       if not os.path.isdir(self.data_cache_path):
         if self.print_status: print("Making data cache directory: "+self.data_cache_path)
         os.mkdir(self.data_cache_path)
-        # check disk usage
-        space_required = self._data_cache_size
-        if self.remove_zip_files == False:
-          space_required = space_required * 2 # ~ double if retaining zips
-        total, used, free = shutil.disk_usage(self.data_cache_path)
-        if free < space_required:
-          if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 2))+" / "+str(round(space_required / float(2 << 40), 2))+" TiB available !")
+      # check current usage
+      sum_dir = 0
+      sum_zip = 0
+      for file in os.listdir(self.data_cache_path):
+        if os.path.isfile(os.path.join(self.data_cache_path, file)):
+          sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
+        elif os.path.isdir(os.path.join(self.data_cache_path, file)):
+          for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
+            sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
+      if self.print_status:
+        print("Current data cache:")
+        print("  Directory usage: "+str(round(sum_dir / float(2 << 40), 4))+" TiB")
+        print("  Zip file usage: "+str(round(sum_zip / float(2 << 40), 4))+" TiB")
+      # check disk space
+      space_required = self._data_cache_size
+      if self.remove_zip_files == False:
+        space_required += self._data_cache_zipsize # add if retaining zips
+      # subtract used space
+      space_required -= sum_dir
+      if self.remove_zip_files == False:
+        space_required -= sum_zip
+      total, used, free = shutil.disk_usage(self.data_cache_path)
+      # warn if not enough space
+      if free < space_required:
+        if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
       # target paths for zip file and data subdirectory
       plate = self.gene_list[gene_id][terminus]["plate"]
       zip_path = os.path.join(self.data_cache_path, plate+".zip")
