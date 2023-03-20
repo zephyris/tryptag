@@ -600,7 +600,7 @@ class TrypTag:
   # iterates through work_list of {"gene_id": gene_id, "terminus": terminus} entries
   # runs analysis_function on gene_id and terminus in each entry
   # returns list of result objects {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
-  def _list_analysis_worker(self, work_list, analysis_function, tryptag=None):
+  def _list_analysis_worker(self, work_list, analysis_function, tryptag=None, worker_index=None):
     # if passed a TrypTag instance then use a copy (for running as a spawned thread/process), otherwise use self as current_tryptag
     if tryptag is None:
       current_tryptag = self
@@ -608,7 +608,9 @@ class TrypTag:
       from copy import deepcopy
       current_tryptag = deepcopy(tryptag)
     results = []
-    for entry in work_list:
+    for i in range(len(work_list)):
+      entry = work_list[i]
+      if self.print_status and worker_index is not None: print("  Worker index", worker_index + 1, "processing worklist entry", i + 1, "of", len(work_list))
       result = {
         "gene_id": entry["gene_id"],
         "terminus": entry["terminus"]
@@ -631,6 +633,7 @@ class TrypTag:
     import concurrent.futures
     import multiprocessing
     import numpy
+    if self.print_status: print("Analysing worklist")
     # deduplicate work_list
     dedup_work_list = []
     for entry in work_list:
@@ -663,7 +666,7 @@ class TrypTag:
       for i in range(len(split_work_list)):
         # pass each split_work_list list item to a _list_analysis_worker function
         if len(split_work_list[i]) > 0:
-          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, tryptag=self)
+          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, tryptag=self, worker_index=i)
         futures.append(future)
       for future in concurrent.futures.as_completed(futures):
         # concatenate results as they are returned
