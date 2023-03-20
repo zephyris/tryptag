@@ -539,7 +539,7 @@ class TrypTag:
   # [phase_(gray) mng_(green) dna_(blue) phase_threshold dna_threshold] AKA
   # [pha, mng, dna, pth, dth]
   # channel images are mode F, 32-bit float, threshold images are mode L, 8 bit (0 or 255)
-  def open_field(self, gene, terminus, field):
+  def open_field(self, gene, terminus, field = 0):
     terminus = terminus.lower()
     self.fetch_data(gene, terminus)
     field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene][terminus]["plate"], gene+"_4_"+terminus.upper()+"_"+str(field + 1))
@@ -603,7 +603,7 @@ class TrypTag:
   # open a cell, cropped from a field of view
   # uses the phase and dna threshold images from tryptag
   # cell x, y coordinate in phase threshold from tryptag
-  def open_cell(self, gene, terminus, field, cell, rotate = False, width = 323):
+  def open_cell(self, gene, terminus, field = 0, cell = 0, width = 323, rotate = False):
     self.fetch_data(gene, terminus)
     cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
     crop_centre = cell_data["centre"]
