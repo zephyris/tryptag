@@ -49,6 +49,7 @@ class TrypTag:
     # MAGIC NUMBERS:
     # master zenodo record id
     self.master_zenodo_id = master_zenodo_id
+    # data cache information
     self._data_cache_plates = data_cache_plates
     self._data_cache_platesize = data_cache_platesize
     self._data_cache_zipsize = data_cache_zipsize
@@ -58,7 +59,7 @@ class TrypTag:
     # image properties
     self.um_per_px = um_per_px
 
-    # verbose progress bar for file download
+    # progress bar object for file download/unzipping
     self._progress_bar = None
 
     # global variables for caching last field of view loaded
@@ -329,6 +330,43 @@ class TrypTag:
         m.update(buffer)
     return m.hexdigest()
 
+  def check_cache_usage(self):
+    # check current usage
+    ## full check
+    #sum_dir = 0
+    #sum_zip = 0
+    #for file in os.listdir(self.data_cache_path):
+    #  if os.path.isfile(os.path.join(self.data_cache_path, file)):
+    #    sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
+    #  elif os.path.isdir(os.path.join(self.data_cache_path, file)):
+    #    for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
+    #      sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
+    # full check too slow, use approximation
+    sum_dir = 0
+    sum_zip = 0
+    for file in os.listdir(self.data_cache_path):
+      if file.endswith(".zip"):
+        sum_zip += self._data_cache_zipsize
+      if os.path.isdir(os.path.join(self.data_cache_path, file)):
+        sum_dir += self._data_cache_platesize
+    # full check too slow, do simplified check
+    if self.print_status:
+      print("Current data cache:")
+      print("  Directory usage: ~"+str(round(sum_dir / float(2 << 40), 4))+" TiB")
+      print("  Zip file usage: ~"+str(round(sum_zip / float(2 << 40), 4))+" TiB")
+    # check disk space
+    space_required = self._data_cache_size
+    if self.remove_zip_files == False:
+      space_required += self._data_cache_zipsize # add if retaining zips
+    # subtract used space
+    space_required -= sum_dir
+    if self.remove_zip_files == False:
+      space_required -= sum_zip
+    total, used, free = shutil.disk_usage(self.data_cache_path)
+    # warn if not enough space
+    if free < space_required:
+      if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
+
   # get microscopy data for a given gene_id and terminus
   # updates self.gene_list and self.zenodo_index
   # places data in self.data_cache_path
@@ -340,41 +378,6 @@ class TrypTag:
       if not os.path.isdir(self.data_cache_path):
         if self.print_status: print("Making data cache directory: "+self.data_cache_path)
         os.mkdir(self.data_cache_path)
-      # check current usage
-      ## full check
-      #sum_dir = 0
-      #sum_zip = 0
-      #for file in os.listdir(self.data_cache_path):
-      #  if os.path.isfile(os.path.join(self.data_cache_path, file)):
-      #    sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
-      #  elif os.path.isdir(os.path.join(self.data_cache_path, file)):
-      #    for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
-      #      sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
-      # full check too slow, use approximation
-      sum_dir = 0
-      sum_zip = 0
-      for file in os.listdir(self.data_cache_path):
-        if file.endswith(".zip"):
-          sum_zip += self._data_cache_zipsize
-        if os.path.isdir(os.path.join(self.data_cache_path, file)):
-          sum_dir += self._data_cache_platesize
-      # full check too slow, do simplified check
-      if self.print_status:
-        print("Current data cache:")
-        print("  Directory usage: ~"+str(round(sum_dir / float(2 << 40), 4))+" TiB")
-        print("  Zip file usage: ~"+str(round(sum_zip / float(2 << 40), 4))+" TiB")
-      # check disk space
-      space_required = self._data_cache_size
-      if self.remove_zip_files == False:
-        space_required += self._data_cache_zipsize # add if retaining zips
-      # subtract used space
-      space_required -= sum_dir
-      if self.remove_zip_files == False:
-        space_required -= sum_zip
-      total, used, free = shutil.disk_usage(self.data_cache_path)
-      # warn if not enough space
-      if free < space_required:
-        if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
       # target paths for zip file and data subdirectory
       plate = self.gene_list[gene_id][terminus]["plate"]
       zip_path = os.path.join(self.data_cache_path, plate+".zip")
@@ -387,6 +390,7 @@ class TrypTag:
       # download zip
       try:
         if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
+          self.check_cache_usage()
           print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
           # fetch the processed microscopy data from Zenodo
           if self.print_status: print("  Making plate data directory for: "+plate)
