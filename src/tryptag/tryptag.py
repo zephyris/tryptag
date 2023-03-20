@@ -59,33 +59,6 @@ class TrypTag:
     self._thresholds_sk = None
     self._channels_sk = None
 
-    # helpful values
-    self.parental_genelist = [
-      {"gene_id": "wild-type.1.0h", "terminus": "n"},
-      {"gene_id": "wild-type.1.2h", "terminus": "n"},
-      {"gene_id": "wild-type.2.0h", "terminus": "n"},
-      {"gene_id": "wild-type.2.2h", "terminus": "n"}
-    ]
-
-    ## TODO: Handy, but triggers data download on TrypTag instantiation
-    ## all genes ids/termini, as a worklist
-    #self.worklist_all = [
-    #  {
-    #    "gene_id": gene_id,
-    #    "terminus": terminus,
-    #  } for gene_id, terminus in
-    #  ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if terminus in gene_entry)
-    #]
-
-    ## parental dummy gene id/termini entries, as a worklist
-    #self.worklist_parental = [
-    #  {
-    #    "gene_id": gene_id,
-    #    "terminus": terminus,
-    #  } for gene_id, terminus in
-    #  ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if "wild-type" in gene_id and terminus in gene_entry)
-    #]
-
   # function to fetch text from a zenodo url, respecting request rate limits
   # TODO: Cache per session(?)
   def _fetch_zenodo_text(self, url):
@@ -166,7 +139,7 @@ class TrypTag:
   # fetch gene list/metadata
   # records information in self.gene_list and self.zenodo_index
   @cached_property
-  def gene_list(self):  
+  def gene_list(self):
     # fetch Zenodo record JSON, to get latest version doi
     if self.print_status: print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
     if self.print_status: print("  Using latest Zenodo version, record ID: "+self.zenodo_record_id)
@@ -205,6 +178,28 @@ class TrypTag:
             terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
             gene_list[line[0]][t] = terminus_data
     return gene_list
+
+  @cached_property
+  def worklist_all(self):
+    # all genes ids/termini, as a worklist
+    return [
+      {
+        "gene_id": gene_id,
+        "terminus": terminus,
+      } for gene_id, terminus in
+      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if terminus in gene_entry)
+    ]
+
+  @cached_property
+  def worklist_parental(self):
+    # parental dummy gene id/termini entries, as a worklist
+    return [
+      {
+        "gene_id": gene_id,
+        "terminus": terminus,
+      } for gene_id, terminus in
+      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if "wild-type" in gene_id and terminus in gene_entry)
+    ]
 
   # recursively called function to build a list of localisation terms
   # Adds a list of parents, a hierachy down to the root node
