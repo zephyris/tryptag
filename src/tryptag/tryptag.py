@@ -602,15 +602,9 @@ class TrypTag:
   # iterates through work_list of {"gene_id": gene_id, "terminus": terminus} entries
   # runs analysis_function on gene_id and terminus in each entry
   # returns list of result objects {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
-  def _list_analysis_worker(self, work_list, analysis_function, gene_list=None, zenodo_index=None):
-    if gene_list is not None:
-      # if passed a gene_list then running as a spawned thread/process, and requires a new TrypTag instance
-      # TODO: inherit all relevant constants, eg. master_zenodo_id
-      from tryptag import TrypTag
-      current_tryptag = TrypTag()
-      current_tryptag.gene_list = gene_list
-      current_tryptag.zenodo_index = zenodo_index
-    else:
+  def _list_analysis_worker(self, work_list, analysis_function, current_tryptag=None):
+    # if passed a copy of a TrypTag instance then use (for running as a spawned thread/process), otherwise use self as current_tryptag
+    if current_tryptag is None:
       current_tryptag = self
     results = []
     for entry in work_list:
@@ -632,16 +626,17 @@ class TrypTag:
   #   take only tryptag, gene_id and terminus as arguments
   #   not use global variables and return a single variable as a result
   # returns a list of {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
-  def analyse_list(self, work_list, analysis_function, workers=None, mode=None):
+  def analyse_list(self, work_list, analysis_function, workers=None, multiprocess_mode=None):
     import concurrent.futures
     import multiprocessing
     import numpy
+    from copy import deepcopy
     # deduplicate work_list
     dedup_work_list = []
     for entry in work_list:
       if entry not in dedup_work_list:
         dedup_work_list.append(entry)
-    if mode is None:
+    if multiprocess_mode is None:
       # run by direct call of the _list_analysis_worker function
       if self.print_status: print("  Single process")
       results = self._list_analysis_worker(work_list, analysis_function)
@@ -651,11 +646,11 @@ class TrypTag:
         workers = multiprocessing.cpu_count()
       # split dedup_work_list list into lists for each worker
       split_work_list = numpy.array_split(dedup_work_list, workers)
-      if mode == "process":
+      if multiprocess_mode == "process":
         # setup executor as a process pool
         if self.print_status: print("  Parallel processes with", workers, "workers")
         executor = concurrent.futures.ProcessPoolExecutor(max_workers=workers)
-      elif mode == "thread":
+      elif multiprocess_mode == "thread":
         # setup executor as a thread pool
         if self.print_status: print("  Parallel threads with", workers, "workers")
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
@@ -664,7 +659,8 @@ class TrypTag:
       for i in range(len(split_work_list)):
         # pass each split_work_list list item to a _list_analysis_worker function
         if len(split_work_list[i]) > 0:
-          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, gene_list=self.gene_list, zenodo_index=self.zenodo_index)
+          current_tryptag = deepcopy(self)
+          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, current_tryptag=current_tryptag)
         futures.append(future)
       for future in concurrent.futures.as_completed(futures):
         # concatenate results as they are returned
