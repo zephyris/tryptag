@@ -391,6 +391,7 @@ class TrypTag:
         if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
           # unzip data
           if self.print_status: print("  Decompressing image data from: "+plate+".zip")
+          os.mkdir(dir_path)
           try:
             with ZipFile(zip_path) as archive:
               suffix = "_roisCells.txt"
