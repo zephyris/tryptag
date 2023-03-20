@@ -600,10 +600,13 @@ class TrypTag:
   # iterates through work_list of {"gene_id": gene_id, "terminus": terminus} entries
   # runs analysis_function on gene_id and terminus in each entry
   # returns list of result objects {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
-  def _list_analysis_worker(self, work_list, analysis_function, current_tryptag=None):
-    # if passed a copy of a TrypTag instance then use (for running as a spawned thread/process), otherwise use self as current_tryptag
-    if current_tryptag is None:
+  def _list_analysis_worker(self, work_list, analysis_function, tryptag=None):
+    # if passed a TrypTag instance then use a copy (for running as a spawned thread/process), otherwise use self as current_tryptag
+    if tryptag is None:
       current_tryptag = self
+    else:
+      from copy import deepcopy
+      current_tryptag = deepcopy(tryptag)
     results = []
     for entry in work_list:
       result = {
@@ -628,7 +631,6 @@ class TrypTag:
     import concurrent.futures
     import multiprocessing
     import numpy
-    from copy import deepcopy
     # deduplicate work_list
     dedup_work_list = []
     for entry in work_list:
@@ -652,13 +654,16 @@ class TrypTag:
         # setup executor as a thread pool
         if self.print_status: print("  Parallel threads with", workers, "workers")
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+      # trigger fetch of gene_list and zenodo_index, prior to copying for each thread
+      self.zenodo_index
+      self.gene_list
+      # loop for setting up futures
       results = []
       futures = []
       for i in range(len(split_work_list)):
         # pass each split_work_list list item to a _list_analysis_worker function
         if len(split_work_list[i]) > 0:
-          current_tryptag = deepcopy(self)
-          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, current_tryptag=current_tryptag)
+          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, tryptag=self)
         futures.append(future)
       for future in concurrent.futures.as_completed(futures):
         # concatenate results as they are returned
