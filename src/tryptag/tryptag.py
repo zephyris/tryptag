@@ -242,45 +242,53 @@ class TrypTag:
       ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if "wild-type" in gene_id and terminus in gene_entry)
     ]
 
-  # recursively called function to build a list of localisation terms
-  # Adds a list of parents, a hierachy down to the root node
-  # Adds a list of children, a simple list of all children of the current node
-  def _parse_localisation_ontology(self, ontology_json, parent=["root"]):
-    terms = {}
-    # get list of localisations or sublocalisations to iterate through
-    if "localisation" in ontology_json:
-      loclist = ontology_json["localisation"]
-    else:
-      loclist = ontology_json["sublocalisation"]
-    # iterate through list
-    for l in range(len(loclist)):
-      # add current entry to terms dict
-      terms[loclist[l]["name"]] = loclist[l].copy()
-      terms[loclist[l]["name"]]["parent"] = parent
-      if "sublocalisation" in loclist[l]:
-        # record children to current entry 
-        terms[loclist[l]["name"]]["children"] = []
-        del terms[loclist[l]["name"]]["sublocalisation"]
-        for s in range(len(loclist[l]["sublocalisation"])):
-          terms[loclist[l]["name"]]["children"].append(loclist[l]["sublocalisation"][s]["name"])
-        # recurse through subterms
-        terms.update(self._parse_localisation_ontology(loclist[l], parent=parent + [loclist[l]["name"]]))
-    # if the root node, add a root pseudolocalisation
-    if parent == ["root"]:
-      terms["root"] = {
-        "name": "root",
-        "parent": [],
-        "children": [x["name"] for x in ontology_json["localisation"]]
-      }
-    return terms
-
-  # load ontologies for intelligent localisation based searching
   @cached_property
   def localisation_ontology(self):
+    """
+    Localisation ontology annotation terms for intelligent localisation-based searching.
+    """
+
+    def _parse_localisation_ontology(ontology_json, parent: list = ["root"]) -> dict:
+      """
+      Parse localisaiton ontology from hierachical object to list of objects with parent and children lists.
+      Recursively called to assemble list.
+
+      :param ontology_json: Parsed ontology JSON.
+      :param parent: List of parent terms, used in recursive calls to build ontology.
+      :return: List of dicts, each containing information about that localisation ontology term.
+      """
+      terms = {}
+      # get list of localisations or sublocalisations to iterate through
+      if "localisation" in ontology_json:
+        loclist = ontology_json["localisation"]
+      else:
+        loclist = ontology_json["sublocalisation"]
+      # iterate through list
+      for l in range(len(loclist)):
+        # add current entry to terms dict
+        terms[loclist[l]["name"]] = loclist[l].copy()
+        terms[loclist[l]["name"]]["parent"] = parent
+        if "sublocalisation" in loclist[l]:
+          # record children to current entry 
+          terms[loclist[l]["name"]]["children"] = []
+          del terms[loclist[l]["name"]]["sublocalisation"]
+          for s in range(len(loclist[l]["sublocalisation"])):
+            terms[loclist[l]["name"]]["children"].append(loclist[l]["sublocalisation"][s]["name"])
+          # recurse through subterms
+          terms.update(_parse_localisation_ontology(loclist[l], parent=parent + [loclist[l]["name"]]))
+      # if the root node, add a root pseudolocalisation
+      if parent == ["root"]:
+        terms["root"] = {
+          "name": "root",
+          "parent": [],
+          "children": [x["name"] for x in ontology_json["localisation"]]
+        }
+      return terms
+
     import json
     zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
     # load and parse to flat dict of terms with parent and children names
-    return self._parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
+    return _parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
 
   def localisation_match(self, gene_id: str, terminus: str, query_term: str, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> bool:
     """
