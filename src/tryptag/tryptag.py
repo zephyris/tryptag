@@ -715,15 +715,3 @@ class TrypTag:
         results += future.result()
       # return concatenated results
     return results
-
-  # Gets a list of all genes and analyses
-  def analyse_all(self, function):
-    list = []
-    for gene_id in self.gene_list:
-      for terminus in ["n", "c"]:
-        if terminus in self.gene_list[gene_id]:
-          list.append({
-              "gene_id": gene_id,
-              "terminus": terminus
-          })
-    return (self.analyse_cells(list, function))
