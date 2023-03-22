@@ -282,12 +282,18 @@ class TrypTag:
     # load and parse to flat dict of terms with parent and children names
     return self._parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
 
-  # localisation match function for searches
-  # searches for a match of each term in a localisation list for a gene id and terminus against
-  # a query localisation term, unless that localisation has a modifier in the exclude_modifiers list
-  # if match_subterms is True, then also matches aganst parent structures of the localisation term
-  # if required_modifiers is not None, then it must also match all of them
-  def localisation_match(self, gene_id, terminus, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], required_modifiers=None):
+  def localisation_match(self, gene_id: str, terminus: str, query_term: str, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> bool:
+    """
+    Test if the localisation annotation of `gene_id` and `terminus` in `gene_list` match the query.
+
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param query_term: Search query annotation term from the localisation ontology.
+    :param match_subterms: Whether to also match child/subterm/substructures of `query_term`, default `True`.
+    :param exclude_modifiers: List of modifier terms none of which can be matched, default `"weak"` and `"<10%"`.
+    :param required_modifiers: List of modifier terms all of which must be matched, default `None`.
+    :return: Whether or not this is a localisation match.
+    """
     # get query localisation
     localisations = self.gene_list[gene_id][terminus]["loc"]
     # get ontology, and lead to keyerror if query_term not in ontology
@@ -325,8 +331,16 @@ class TrypTag:
     # no matches, so return false
     return False
 
-  # get a list of gene hits from a localisation_match
-  def localisation_search(self, query_term, match_subterms=True, exclude_modifiers=["weak", "<10%"], include_modifiers=None, required_modifiers=None):
+  def localisation_search(self, query_term: str, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> list:
+    """
+    Get a worklist of `gene_id` and `terminus` hits where any of the localisation annotations match the query.
+
+    :param query_term: Search query annotation term from the localisation ontology.
+    :param match_subterms: Whether to also match child/subterm/substructures of `query_term`, default `True`.
+    :param exclude_modifiers: List of modifier terms none of which can be matched, default `"weak"` and `"<10%"`.
+    :param required_modifiers: List of modifier terms all of which must be matched, default `None`.
+    :return: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`.
+    """
     # check all against query
     hits = []
     for gene_id in self.gene_list:
@@ -413,7 +427,7 @@ class TrypTag:
         _progress_bar.finish()
         _progress_bar = None
 
-    def _file_md5_hash(path: str, blocksize = 2**20: int) -> str:
+    def _file_md5_hash(path: str, blocksize:int = 2**20) -> str:
       """
       Calculates MD5 hash of the file at `path`.
       """
