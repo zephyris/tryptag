@@ -366,30 +366,38 @@ class TrypTag:
         m.update(buffer)
     return m.hexdigest()
 
-  def check_cache_usage(self):
-    # check current usage
-    ## full check
-    #sum_dir = 0
-    #sum_zip = 0
-    #for file in os.listdir(self.data_cache_path):
-    #  if os.path.isfile(os.path.join(self.data_cache_path, file)):
-    #    sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
-    #  elif os.path.isdir(os.path.join(self.data_cache_path, file)):
-    #    for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
-    #      sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
-    # full check too slow, use approximation
-    sum_dir = 0
-    sum_zip = 0
-    for file in os.listdir(self.data_cache_path):
-      if file.endswith(".zip"):
-        sum_zip += self._data_cache_zipsize
-      if os.path.isdir(os.path.join(self.data_cache_path, file)):
-        sum_dir += self._data_cache_platesize
+  def check_cache_usage(self, exact: bool = False):
+    """
+    Check disk usage of the data cache vs. free space
+
+    :param exact: If `True`, then calculate usage exactly. Otherwise, approximate estimate from number of directories.
+    """
+    if exact:
+      # full check, sum all file sizes
+      str_prefix = ""
+      sum_dir = 0
+      sum_zip = 0
+      for file in os.listdir(self.data_cache_path):
+        if os.path.isfile(os.path.join(self.data_cache_path, file)):
+          sum_zip += os.path.getsize(os.path.join(self.data_cache_path, file))
+        elif os.path.isdir(os.path.join(self.data_cache_path, file)):
+          for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
+            sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
+    else:
+      # quick approximation, counting directories
+      str_prefix = "~"
+      sum_dir = 0
+      sum_zip = 0
+      for file in os.listdir(self.data_cache_path):
+        if file.endswith(".zip"):
+          sum_zip += self._data_cache_zipsize
+        if os.path.isdir(os.path.join(self.data_cache_path, file)):
+          sum_dir += self._data_cache_platesize
     # full check too slow, do simplified check
     if self.print_status:
       print("Current data cache:")
-      print("  Directory usage: ~"+str(round(sum_dir / float(2 << 40), 4))+" TiB")
-      print("  Zip file usage: ~"+str(round(sum_zip / float(2 << 40), 4))+" TiB")
+      print("  Directory usage: "+str_prefix+str(round(sum_dir / float(2 << 40), 4))+" TiB")
+      print("  Zip file usage: "+str_prefix+str(round(sum_zip / float(2 << 40), 4))+" TiB")
     # check disk space
     space_required = self._data_cache_size
     if self.remove_zip_files == False:
