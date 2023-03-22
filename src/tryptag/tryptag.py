@@ -5,6 +5,7 @@ import shutil
 import glob
 import urllib.request
 from zipfile import ZipFile, BadZipFile
+from typing import NamedTuple, Any
 
 import numpy
 import progressbar
@@ -12,6 +13,26 @@ from filelock import FileLock
 import skimage.io
 import skimage.morphology
 import skimage.transform
+
+class CellImage(NamedTuple):
+  """
+  CellImage object holding information on a (cropped) section of a TrypTag image containing a specific cell.
+  """
+  gene_id: str
+  terminus: str
+  field_index: int
+  cell_index: int
+  rotated: bool
+
+  phase: Any
+  mng: Any
+  dna: Any
+  phase_threshold: Any
+  dna_threshold: Any
+  phase_threshold_othercells: Any
+
+  def __str__(self):
+    return f"CellImage geneid={self.gene_id} field={self.field_index} cell={self.cell_index}"
 
 class TrypTag:
   def __init__(
@@ -641,6 +662,7 @@ class TrypTag:
     # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
     channels[3][channels[3] == 255] = 127
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
+    channels.append(255*(channels[3] == 127))
     channels[3][channels[3] == 127] = 0
     # Crop (and rotate)
     cell_channels = []
@@ -675,14 +697,28 @@ class TrypTag:
     :param cell_index: Index of the cell in the field of view. If not set, then `0`.
     :param width: Cropped image width. Default `323` pixels. If too small, the cell may extend beyond the image bounds.
     :param rotate: Whether or not to rotate the cell. Default `False`.
-    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_threshold`, `dna_threshold` and `phase_threshold_othercells`.
     """
     self.fetch_data(gene_id, terminus)
     cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
-    return self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
+    phase, mng, dna, pth, dth, pth_other = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
+    return CellImage(
+      gene_id=gene_id,
+      terminus=terminus,
+      field_index=field_index,
+      cell_index=cell_index,
+      rotated=rotate,
+      phase=phase,
+      mng=mng,
+      dna=dna,
+      phase_threshold=pth,
+      dna_threshold=dth,
+      phase_threshold_othercells=pth_other,
+    )
+
 
   def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, images: list = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
     """
