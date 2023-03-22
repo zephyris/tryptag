@@ -5,7 +5,7 @@ import shutil
 import glob
 import urllib.request
 from zipfile import ZipFile, BadZipFile
-from typing import NamedTuple, Any
+from typing import NamedTuple, Any, Callable
 
 import numpy
 import progressbar
@@ -18,21 +18,36 @@ class CellImage(NamedTuple):
   """
   CellImage object holding information on a (cropped) section of a TrypTag image containing a specific cell.
   """
+  phase: Any
+  mng: Any
+  dna: Any
+  phase_mask: Any
+  dna_mask: Any
+  phase_mask_othercells: Any
   gene_id: str
   terminus: str
   field_index: int
   cell_index: int
   rotated: bool
 
+  def __str__(self):
+    return f"CellImage gene_id={self.gene_id} field_index={self.field_index} cell_index={self.cell_index} "
+
+class FieldImage(NamedTuple):
+  """
+  FieldImage object holding information on a TrypTag image.
+  """
   phase: Any
   mng: Any
   dna: Any
-  phase_threshold: Any
-  dna_threshold: Any
-  phase_threshold_othercells: Any
+  phase_mask: Any
+  dna_mask: Any
+  gene_id: str
+  terminus: str
+  field_index: int
 
   def __str__(self):
-    return f"CellImage geneid={self.gene_id} field={self.field_index} cell={self.cell_index}"
+    return f"FieldImage gene_id={self.gene_id} field_index={self.field_index}"
 
 class TrypTag:
   def __init__(
@@ -582,9 +597,9 @@ class TrypTag:
       for terminus in ["c", "n"]:
         self.fetch_data(gene_id, terminus)
 
-  def open_field(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None) -> list:
+  def _open_field(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None) -> list:
     """
-    Open a field of view.
+    Returns field of view image data.
 
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
@@ -633,10 +648,31 @@ class TrypTag:
           images[image_index] = self._thresholds_sk[image_index - 3].astype("uint8").copy()
     return images
 
+  def open_field(self, gene_id: str, terminus: str, field_index: int = 0) -> list:
+    """
+    Opens a field of view from a `gene_id`, `terminus` and `field_index`.
+
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param field_index: Index of the field of view. If not set, then `0`.
+    :return: FieldImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask` and `dna_mask`.
+    """
+    [phase, mng, dna, phase_mask, dna_mask] = self._open_field(gene_id, terminus, field_index)
+    return FieldImage(
+      phase=phase,
+      mng=mng,
+      dna=dna,
+      phase_mask=phase_mask,
+      dna_mask=dna_mask,
+      gene_id=gene_id,
+      terminus=terminus,
+      field_index=field_index,
+    )
+
   # master function for opening a cell
   def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, images: list = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
     """
-    Master function for opening a cell, returning a list with one `skimage` image per image channel and threshold image.
+    Returns cell image data, returning a list with one `skimage` image per image channel and threshold image.
 
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
@@ -646,7 +682,7 @@ class TrypTag:
     :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param rotate: Whether or not to rotate the cell, default `False`.
     :param angle: Angle in degrees to rotate cell clockwise. Default 0.
-    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_thr, dna_thr, phase_thr_othercells]`.
     """
     # define image crop function
     def _skimage_crop(image, x, y, w, h):
@@ -658,12 +694,12 @@ class TrypTag:
     else:
       width_inter = width
     # open field, passing custom images
-    channels = self.open_field(gene_id, terminus, field_index, images = images)
+    channels = self._open_field(gene_id, terminus, field_index, images = images)
     # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
     channels[3][channels[3] == 255] = 127
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
-    channels.append(255*(channels[3] == 127))
-    channels[3][channels[3] == 127] = 0
+    channels.append(255*(channels[3] == 127)) # append a copy if equal 127, other cells
+    channels[3][channels[3] == 127] = 0 # filter for current cell only
     # Crop (and rotate)
     cell_channels = []
     for channel in channels:
@@ -697,26 +733,26 @@ class TrypTag:
     :param cell_index: Index of the cell in the field of view. If not set, then `0`.
     :param width: Cropped image width. Default `323` pixels. If too small, the cell may extend beyond the image bounds.
     :param rotate: Whether or not to rotate the cell. Default `False`.
-    :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_threshold`, `dna_threshold` and `phase_threshold_othercells`.
+    :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask` and `phase_mask_othercells`.
     """
     self.fetch_data(gene_id, terminus)
     cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
-    phase, mng, dna, pth, dth, pth_other = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
+    phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
     return CellImage(
+      mng=mng,
+      dna=dna,
+      phase_mask=phase_mask,
+      dna_mask=dna_mask,
+      phase_mask_othercells=phase_mask_othercells,
       gene_id=gene_id,
       terminus=terminus,
       field_index=field_index,
       cell_index=cell_index,
       rotated=rotate,
       phase=phase,
-      mng=mng,
-      dna=dna,
-      phase_threshold=pth,
-      dna_threshold=dth,
-      phase_threshold_othercells=pth_other,
     )
 
 
@@ -754,13 +790,31 @@ class TrypTag:
       if angle is not None:
         # if not a custom angle
         angle = cell_data["angle"]
-    return self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, images, angle = angle, rotate = rotate, width = width)
+    [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, images, angle = angle, rotate = rotate, width = width)
+    return CellImage(
+      phase=phase,
+      mng=mng,
+      dna=dna,
+      phase_mask=phase_mask,
+      dna_mask=dna_mask,
+      phase_mask_othercells=phase_mask_othercells,
+      gene_id=gene_id,
+      terminus=terminus,
+      field_index=field_index,
+      cell_index=None,
+      rotated=rotate,
+    )
 
-  # worker for multiprocess/thread analysis
-  # iterates through work_list of {"gene_id": gene_id, "terminus": terminus} entries
-  # runs analysis_function on gene_id and terminus in each entry
-  # returns list of result objects {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
-  def _list_analysis_worker(self, work_list, analysis_function, tryptag=None, worker_index=None):
+  def _list_analysis_worker(self, work_list: list, analysis_function: callable, tryptag = None, worker_index: int = None) -> list:
+    """
+    Worker for multiprocess/thread parallel analysis of a `work_list`.
+
+    :param work_list: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`, defining each `gene_id` and `terminus` combination to analyse.
+    :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly three arguments, `tryptag`, `gene_id` and `terminus` in this order.
+    :param tryptag: `TrypTag` instance, copied for use by this spawned thread/process. If `None`, then do not copy and use `self`.
+    :param worker_index: Index of current worker.
+    :return: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`.
+    """
     # if passed a TrypTag instance then use a copy (for running as a spawned thread/process), otherwise use self as current_tryptag
     if tryptag is None:
       current_tryptag = self
@@ -783,13 +837,16 @@ class TrypTag:
       results.append(result)
     return results
 
-  # simple handler for multiprocess/thread analysis
-  # analyses work_list of {"gene_id": gene_id, "terminus": terminus} entries
-  # uses analysis_function, which must:
-  #   take only tryptag, gene_id and terminus as arguments
-  #   not use global variables and return a single variable as a result
-  # returns a list of {"gene_id": gene_id, "terminus": terminus, "result": result_from_analysis_function}
-  def analyse_list(self, work_list, analysis_function, workers=None, multiprocess_mode=None):
+  def analyse_list(self, work_list, analysis_function, workers=None, multiprocess_mode="process"):
+    """
+    Simple handler for parallel analysis of a `work_list`.
+
+    :param work_list: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`, defining each `gene_id` and `terminus` combination to analyse.
+    :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly three arguments, `tryptag`, `gene_id` and `terminus` in this order.
+    :param workers: Number of threads/processes to spawn, default is number of CPUs.
+    :param multiprocess_mode: `"process"` for parallel processes, `"thread"` for parallel threads or `None` for no parallel processing (directly calls `analysis_function`).
+    :return: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`. These may be in a different order to `work_list`.
+    """
     import concurrent.futures
     import multiprocessing
     import numpy
