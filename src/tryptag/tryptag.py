@@ -700,9 +700,10 @@ class TrypTag:
       images = [None, None, None, None, None]
     # if cell_index is set, then use tryptag defaults unless overridden
     if cell_index is not None:
-      cell_data = self.gene_list[gene_id][terminus]["cells"][field][cell]
+      cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
       if crop_centre is None:
         crop_centre = cell_data["centre"]
+      if fill_centre is None:
         fill_centre = cell_data["wand"]
       else:
         # if custom fill_centre, check for crop_centre otherwise default to fill_centre
