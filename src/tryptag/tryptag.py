@@ -139,7 +139,11 @@ class TrypTag:
            return text
 
   # function for parsing localisation annotation strings
-  def _parse_localisation_annotation(self, string):
+  def _parse_localisation_annotation(self, string: str) -> list:
+    """
+    Parse standard localisation annotation string in the form term[modifier,modifier],term,term[modifier] etc.
+    :return: List of dicts containing localisation terms and modifiers in the form `{"term": term, "modifiers": [modifier, modifier]}`
+    """
     import re
     # Regex to extract the term and modifiers from strings such as "term[modifier1,modifier2]"
     annotation_re = re.compile(r'^(?P<term>[^[\]]+)(?:|\[(?P<modifiers>[^\]]+)\])$')
@@ -160,12 +164,18 @@ class TrypTag:
     return annotation_list
 
   @cached_property
-  def zenodo_record_id(self):
+  def zenodo_record_id(self) -> str:
+    """
+    Master Zenodo ID from which to load data.
+    """
     zenodo_json = self._fetch_zenodo_record_json(self.master_zenodo_id)
     return str(zenodo_json["id"])
 
   @cached_property
-  def zenodo_index(self):
+  def zenodo_index(self) -> list:
+    """
+    List of Zenodo ID to plateID_YYYYMMDD mappings, for data retrieval.
+    """
     # load plate to zenodo record index
     zenodo_index = {}
     # download plate_doi_index.tsv from master record
@@ -177,10 +187,13 @@ class TrypTag:
       zenodo_index[line[1]] = {"master_record_id": line[0].split(".")[-1]}
     return zenodo_index
 
-  # fetch gene list/metadata
-  # records information in self.gene_list and self.zenodo_index
   @cached_property
-  def gene_list(self):
+  def gene_list(self) -> list:
+    """
+    Master data list, organised as dicts within `gene_list[gene_id][terminus]` structure.
+    `gene_id` is a TriTrypDB gene ID, eg. `"Tb927.5.3250"`.
+    `terminus` is `"n"` or `"c"`.
+    """
     # fetch Zenodo record JSON, to get latest version doi
     if self.print_status: print("Fetching gene list from Zenodo, record ID: "+str(self.master_zenodo_id))
     if self.print_status: print("  Using latest Zenodo version, record ID: "+self.zenodo_record_id)
@@ -221,8 +234,10 @@ class TrypTag:
     return gene_list
 
   @cached_property
-  def worklist_all(self):
-    # all genes ids/termini, as a worklist
+  def worklist_all(self) -> list:
+    """
+    All `gene_id` and `terminus` combinations with data, as a list of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`.
+    """
     return [
       {
         "gene_id": gene_id,
@@ -232,8 +247,10 @@ class TrypTag:
     ]
 
   @cached_property
-  def worklist_parental(self):
-    # parental dummy gene id/termini entries, as a worklist
+  def worklist_parental(self) -> list:
+    """
+    All dummy `gene_id` and `terminus` combinations which correspond to parental cell line samples, as a list of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`.
+    """
     return [
       {
         "gene_id": gene_id,
@@ -243,7 +260,7 @@ class TrypTag:
     ]
 
   @cached_property
-  def localisation_ontology(self):
+  def localisation_ontology(self) -> list:
     """
     Localisation ontology annotation terms for intelligent localisation-based searching.
     """
