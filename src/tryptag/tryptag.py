@@ -95,9 +95,6 @@ class TrypTag:
     # image properties
     self.um_per_px = um_per_px
 
-    # progress bar object for file download/unzipping
-    self._progress_bar = None
-
     # global variables for caching last field of view loaded
     self._field_base_path_sk = None
     self._thresholds_sk = None
@@ -342,33 +339,10 @@ class TrypTag:
             })
     return hits
 
-  # general progress bar function
-  def _show_progress_bar(self, block_num, block_size, total_size):
-    if self._progress_bar is None:
-      self._progress_bar = progressbar.ProgressBar(maxval=total_size)
-      self._progress_bar.start()
-    downloaded = block_num * block_size
-    if downloaded < total_size:
-      self._progress_bar.update(downloaded)
-    else:
-      self._progress_bar.finish()
-      self._progress_bar = None
-
-  # md5 hash function (for checking zip integrity)
-  def _file_md5_hash(self, path, blocksize = 2**20):
-    import hashlib
-    m = hashlib.md5()
-    with open(path, "rb") as file:
-      while True:
-        buffer = file.read(blocksize)
-        if not buffer:
-          break
-        m.update(buffer)
-    return m.hexdigest()
-
-  def check_cache_usage(self, exact: bool = False):
+  def check_data_cache_usage(self, exact: bool = False):
     """
-    Check disk usage of the data cache vs. free space
+    Check disk usage of the data cache vs. free space.
+    Prints information about disk usage for data cache, free space and whether the full cache will fit.
 
     :param exact: If `True`, then calculate usage exactly. Otherwise, approximate estimate from number of directories.
     """
@@ -411,10 +385,48 @@ class TrypTag:
     if free < space_required:
       if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
 
-  # get microscopy data for a given gene_id and terminus
-  # updates self.gene_list and self.zenodo_index
-  # places data in self.data_cache_path
-  def fetch_data(self, gene_id, terminus):
+  def fetch_data(self, gene_id: str, terminus: str):
+    """
+    Downloads and caches microscopy data for the plate containing a `gene_id` and `terminus` combination
+    Places data in `self.data_cache_path`
+    Updates self.gene_list[gene_id][terminus] with information about number of fields of view and cells
+
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    """
+    # progress bar object for file download/unzipping
+    global _progress_bar
+    _progress_bar = None
+
+    def _show_progress_bar(block_num: int, block_size: int, total_size: int):
+      """
+      Progress bar handler for file download and zip decompression.
+      """
+      global _progress_bar
+      if _progress_bar is None:
+        _progress_bar = progressbar.ProgressBar(maxval=total_size)
+        _progress_bar.start()
+      downloaded = block_num * block_size
+      if downloaded < total_size:
+        _progress_bar.update(downloaded)
+      else:
+        _progress_bar.finish()
+        _progress_bar = None
+
+    def _file_md5_hash(path: str, blocksize = 2**20: int) -> str:
+      """
+      Calculates MD5 hash of the file at `path`.
+      """
+      import hashlib
+      m = hashlib.md5()
+      with open(path, "rb") as file:
+        while True:
+          buffer = file.read(blocksize)
+          if not buffer:
+            break
+          m.update(buffer)
+      return m.hexdigest()
+
     terminus = terminus.lower()
     # load tryptag data, if not already
     if terminus in self.gene_list[gene_id]:
@@ -434,7 +446,7 @@ class TrypTag:
       # download zip
       try:
         if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
-          self.check_cache_usage()
+          self.check_data_cache_usage()
           print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
           # fetch the processed microscopy data from Zenodo
           if self.print_status: print("  Making plate data directory for: "+plate)
@@ -454,11 +466,11 @@ class TrypTag:
           while zip_md5 != self.zenodo_index[plate]["record_md5"]:
             if self.print_status:
               print("  Downloading data from: "+self.zenodo_index[plate]["record_url"])
-              urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, self._show_progress_bar)
+              urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, _show_progress_bar)
             else:
               urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
             if self.print_status: print("  Checking MD5 hash of: "+plate+".zip.tmp")
-            zip_md5 = self._file_md5_hash(zip_path_temp)
+            zip_md5 = _file_md5_hash(zip_path_temp)
             if zip_md5 != self.zenodo_index[plate]["record_md5"]:
               if self.print_status: print("! MD5 of downloaded zip is incorrect ("+zip_md5+"), retrying download !")
           if self.print_status: print("  Download complete")
@@ -485,7 +497,7 @@ class TrypTag:
               # do decompression
               for file in archive.namelist():
                 count_checked += 1
-                if self.print_status: self._show_progress_bar(count_checked, 1, total_names)
+                if self.print_status: _show_progress_bar(count_checked, 1, total_names)
                 # loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
                 if file.endswith(suffix) and not (os.path.split(file)[-1].startswith("control") or os.path.split(file)[-1].startswith("ontrol") or os.path.split(file)[-1].startswith("Control")):
                   source_path = os.path.split(file)
@@ -553,7 +565,7 @@ class TrypTag:
 
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
-    :return: True or false
+    :return: If the data is already cached
     """
     # path for data subdirectory
     plate = self.gene_list[gene_id][terminus]["plate"]
