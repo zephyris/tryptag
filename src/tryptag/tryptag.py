@@ -95,14 +95,26 @@ class TrypTag:
     # image properties
     self.um_per_px = um_per_px
 
+    # global variable for caching strings requested from urls
+    self._url_str_cache = {}
+
     # global variables for caching last field of view loaded
     self._field_base_path_sk = None
     self._thresholds_sk = None
     self._channels_sk = None
 
-  # function to fetch text from a zenodo url, respecting request rate limits
   # TODO: Cache per session(?)
-  def _fetch_zenodo_text(self, url):
+  def _fetch_zenodo_text(self, url: str) -> str:
+    """
+    Data retrieval helper function. Fetch a string from any Zenodo URL, respecting rate limits.
+
+    :param url: Zenodo URL.
+    :return: String of the contents of URL.
+    """
+    # check cache and return string
+    if url in self._url_str_cache:
+      return self._url_str_cache[url]
+    # otherwise, fetch from url
     from urllib.request import urlopen
     from urllib.error import HTTPError
     import time
@@ -113,12 +125,19 @@ class TrypTag:
         response = urlopen(url)
       except HTTPError as e:
         if self.print_status: print("  Zenodo query rate limit reached, waiting to retry")
-        time.sleep(60) # testing shows the rate limiter resets after 50s, so 60s for a bit of space
+        time.sleep(60) # MAGIC NUMBER: testing shows the rate limiter resets after 50s, so 60s for a bit of space
     text = response.read().decode(response.info().get_param("charset") or "utf-8-sig")
+    # cache and return
+    self._url_str_cache[url] = text
     return text
 
-  # function to fetch zenodo record information, using _fetch_zenodo_text
-  def _fetch_zenodo_record_json(self, zenodo_id):
+  def _fetch_zenodo_record_json(self, zenodo_id: str):
+    """
+    Data retrieval helper function. Fetch a record JSON for a Zenodo ID.
+
+    :param zenodo_id: Zenodo ID
+    :return: JSON record information for `zenodo_id`.
+    """
     import json
     # fetch Zenodo record JSON
     url = "https://zenodo.org/api/records/"+str(zenodo_id)
@@ -126,8 +145,14 @@ class TrypTag:
     text = self._fetch_zenodo_text(url)
     return json.loads(text)
 
-  # function to fetch text from a file by name in a zenodo record, using zenodo_json and _fetch_zenodo_text
-  def _fetch_zenodo_record_file(self, zenodo_json, file_name):
+  def _fetch_zenodo_record_file(self, zenodo_json, file_name: str) -> str:
+    """
+    Data retrieval helper function. Fetch the contents of a text file in a Zenodo ID.
+
+    :param zenodo_json: JSON record information for a Zenodo ID.
+    :param file_name: File name.
+    :return: String of the contents of `file_name`, fetched from Zenodo.
+    """
     from urllib.request import urlopen
     from urllib.error import HTTPError
     for file in zenodo_json["files"]:
