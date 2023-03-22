@@ -563,12 +563,13 @@ class TrypTag:
 
   def open_field(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None) -> list:
     """
-    Open a field of view, returning a list with one `skimage` image per image channel and threshold image.
-    List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    Open a field of view.
+
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
     # set images to list of Nones, if None
     if images is None:
@@ -615,6 +616,7 @@ class TrypTag:
   def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, images: list = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
     """
     Master function for opening a cell, returning a list with one `skimage` image per image channel and threshold image.
+
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
@@ -623,6 +625,7 @@ class TrypTag:
     :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param rotate: Whether or not to rotate the cell, default `False`.
     :param angle: Angle in degrees to rotate cell clockwise. Default 0.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
     # define image crop function
     def _skimage_crop(image, x, y, w, h):
@@ -663,15 +666,16 @@ class TrypTag:
   # cell x, y coordinate in phase threshold from tryptag
   def open_cell(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = 0, width: int = 323, rotate: bool = False) -> list:
     """
-    Opens a cell from a `gene_id`, `terminus`, `field_index` and `cell_index`, returning a list with one `skimage` image per image channel and threshold image.
-    List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    Opens a cell from a `gene_id`, `terminus`, `field_index` and `cell_index`.
     Use `open_cell_custom` if you would like to inject custom images, coordinates and/or angle.
+
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param cell_index: Index of the cell in the field of view. If not set, then `0`.
     :param width: Cropped image width. Default `323` pixels. If too small, the cell may extend beyond the image bounds.
     :param rotate: Whether or not to rotate the cell. Default `False`.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
     self.fetch_data(gene_id, terminus)
     cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
@@ -683,7 +687,8 @@ class TrypTag:
   def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, images: list = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
     """
     Advanced customisable open cell, opens a cell from a `gene_id`, `terminus` and `field_index`, but with customisable images, cell coordinates and/or angle.
-    Allows use of custom pth and cell coordinates, default cell coordinates but prefiltered mng, etc.
+    This allows use of custom pth image and cell coordinates, default cell coordinates but prefiltered mng image, etc.
+
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
@@ -694,6 +699,7 @@ class TrypTag:
     :param rotate: Whether or not to rotate the cell.
     :param angle: Angle in degrees to rotate cell clockwise. If not set or `None`, tryptag default.
     :param width: Cropped image width. Default 323 pixels. If too small, the cell may extend beyond the image bounds.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
     # set images to list of Nones, if None
     if images is None:
