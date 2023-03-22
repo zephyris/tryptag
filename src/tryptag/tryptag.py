@@ -634,7 +634,7 @@ class TrypTag:
     else:
       width_inter = width
     # open field, passing custom images
-    channels = self.open_field(gene_id, terminus, field_index = 0, images = images)
+    channels = self.open_field(gene_id, terminus, field_index, images = images)
     # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
     channels[3][channels[3] == 255] = 127
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
