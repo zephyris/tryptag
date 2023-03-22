@@ -520,9 +520,12 @@ class TrypTag:
 
   # checks data in self.data_cache_path to make sure it is the latest version
   def check_data_cache(self):
+    """
+    Checks all microscopy in the data cache, reporting any missmatches of MD5 hash per data plate.
+    Any MD5 hash missmatches imply a new version of data for that plate may be available.
+    """
     import os
-    # load tryptag data, if not already
-    print("Checking data cache for errors")
+    if self.print_status: print("Checking data cache for errors")
     for plate in self.zenodo_index:
       zip_path = os.path.join(self.data_cache_path, plate+".zip")
       dir_path = os.path.join(self.data_cache_path, plate)
@@ -549,54 +552,89 @@ class TrypTag:
           if md5 != self.zenodo_index[plate]["record_md5"]:
             if self.print_status: print("  MD5 file for zip file does not match zenodo record MD5:", plate)
 
-  # force load of all data by iterating through every gene and terminus
   def fetch_all_data(self):
-    for gene in self.gene_list:
+    """
+    Fetches all microscopy data and stores it in the data cache.
+    """
+    # iterate thorugh all `gene_id`` and `termini
+    for gene_id in self.gene_list:
       for terminus in ["c", "n"]:
-        self.fetch_data(gene, terminus)
+        self.fetch_data(gene_id, terminus)
 
-  # open field of view, returning array with one scikit image/np array image per channel and threshold image
-  # [phase_(gray) mng_(green) dna_(blue) phase_threshold dna_threshold] AKA
-  # [pha, mng, dna, pth, dth]
-  # channel images are mode F, 32-bit float, threshold images are mode L, 8 bit (0 or 255)
-  def open_field(self, gene, terminus, field = 0):
+  def open_field(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None) -> list:
+    """
+    Open a field of view, returning a list with one `skimage` image per image channel and threshold image.
+    List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param field_index: Index of the field of view. If not set, then `0`.
+    :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    """
+    # set images to list of Nones, if None
+    if images is None:
+      images = [None, None, None, None, None]
+    # ensure data is fetched
     terminus = terminus.lower()
-    self.fetch_data(gene, terminus)
-    field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene][terminus]["plate"], gene+"_4_"+terminus.upper()+"_"+str(field + 1))
+    self.fetch_data(gene_id, terminus)
+    # determine base path for files
+    field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene_id][terminus]["plate"], gene_id+"_4_"+terminus.upper()+"_"+str(field_index + 1))
     if field_base_path != self._field_base_path_sk:
+      # if not the last path opened, open field and threshold images and store base path in self
       self._field_base_path_sk = field_base_path
       field_image = skimage.io.imread(self._field_base_path_sk+".tif")
-      field_image = numpy.moveaxis(field_image, [0, 1, 2], [1, 2, 0]) # why loading in a weird order?
+      field_image = numpy.moveaxis(field_image, [0, 1, 2], [1, 2, 0]) # MAGIC NUMBER: correct loading in a weird order
       field_threshold = skimage.io.imread(self._field_base_path_sk+"_thr.tif")
+      # store a copy of the images in 
       self._channels_sk = []
       for channel in field_image:
         self._channels_sk.append(channel.copy())
       self._thresholds_sk = []
       for threshold in field_threshold:
         self._thresholds_sk.append(threshold.copy())
-    return [self._channels_sk[0].astype("uint16").copy(), self._channels_sk[1].astype("uint32").copy(), self._channels_sk[2].astype("uint16").copy(), self._thresholds_sk[0].astype("uint8").copy(), self._thresholds_sk[1].astype("uint8").copy()]
-
-  def _skimage_crop(self, image, x, y, w, h):
-    return image[int(y):int(y + h), int(x):int(x + w)]
-
-  def _skimage_change_values(self, image, min, max, v):
-    image[image >= min & image <= max] = v
-    return
+    # setup output
+    for image_index, image in enumerate(images):
+      if image is not None:
+        # if a custom image provided, then copy
+        images[image_index] = image.copy()
+      else:
+        # otherwise, populate from loaded channels/thresholds
+        if image_index < 3:
+          # channel images
+          if image_index == 1:
+            # uint32 for mng
+            images[image_index] = self._channels_sk[image_index].astype("uint32").copy()
+          else:
+            # uint16 otherwise
+            images[image_index] = self._channels_sk[image_index].astype("uint16").copy()
+        else:
+          # threshold images, uint8
+          images[image_index] = self._thresholds_sk[image_index - 3].astype("uint8").copy()
+    return images
 
   # master function for opening a cell
-  def _open_cell(self, gene, terminus, field, crop_centre, fill_centre, phathr = None, dnathr = None, angle = 0, rotate = False, width = 323):
+  def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, images: list = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
+    """
+    Master function for opening a cell, returning a list with one `skimage` image per image channel and threshold image.
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param field_index: Index of the field of view. If not set, then `0`.
+    :param crop_centre: `(x, y)` tuple around which to crop.
+    :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell opbect in pth.
+    :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    :param rotate: Whether or not to rotate the cell, default `False`.
+    :param angle: Angle in degrees to rotate cell clockwise. Default 0.
+    """
+    # define image crop function
+    def _skimage_crop(image, x, y, w, h):
+      return image[int(y):int(y + h), int(x):int(x + w)]
+    # establish output image size, half height if rotating
     if rotate:
       width_inter = width * 1.5 # greater than width * 2**0.5
       height = round(width / 2)
     else:
       width_inter = width
-    # open field
-    channels = self.open_field(gene, terminus, field)
-    # replace with custom phathr and dnathr, if defined
-    if not phathr is None:
-      channels[3] = phathr.copy()
-    if not dnathr is None:
-      channels[4] = dnathr.copy()
+    # open field, passing custom images
+    channels = self.open_field(gene_id, terminus, field_index = 0, images = images)
     # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
     channels[3][channels[3] == 255] = 127
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
@@ -611,32 +649,69 @@ class TrypTag:
         channel = numpy.pad(channel, ((half_width_inter, half_width_inter), (half_width_inter, half_width_inter)), mode="median")
         offs = half_width_inter
       # square crop
-      channel = self._skimage_crop(channel, crop_centre[0] + offs - half_width_inter, crop_centre[1] + offs - half_width_inter, width_inter, width_inter)
+      channel = _skimage_crop(channel, crop_centre[0] + offs - half_width_inter, crop_centre[1] + offs - half_width_inter, width_inter, width_inter)
       if rotate:
         # if rotating, rotate then crop to final dimensions
         channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
         channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
-        channel = self._skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
+        channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
       cell_channels.append(channel)
     return cell_channels
 
   # open a cell, cropped from a field of view
   # uses the phase and dna threshold images from tryptag
   # cell x, y coordinate in phase threshold from tryptag
-  def open_cell(self, gene, terminus, field = 0, cell = 0, width = 323, rotate = False):
-    self.fetch_data(gene, terminus)
-    cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
+  def open_cell(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = 0, width: int = 323, rotate: bool = False) -> list:
+    """
+    Opens a cell from a `gene_id`, `terminus`, `field_index` and `cell_index`, returning a list with one `skimage` image per image channel and threshold image.
+    List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    Use `open_cell_custom` if you would like to inject custom images, coordinates and/or angle.
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param field_index: Index of the field of view. If not set, then `0`.
+    :param cell_index: Index of the cell in the field of view. If not set, then `0`.
+    :param width: Cropped image width. Default `323` pixels. If too small, the cell may extend beyond the image bounds.
+    :param rotate: Whether or not to rotate the cell. Default `False`.
+    """
+    self.fetch_data(gene_id, terminus)
+    cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
-    return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = None, dnathr = None, angle = angle, rotate = rotate, width = width)
+    return self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
 
-  # opens a custom cell from a field of view
-  # instead of using tryptag thresholded phase and dna images, user-provided phathr and dnathr (uint8, 255 = object)
-  # crop_centre is the (x, y) tuple around which to crop
-  # fill_centre is a (x, y) tuple of a pixel which is in the target cell object (255) in phathr
-  def open_cell_custom(self, gene, terminus, field, phathr, dnathr, crop_centre, fill_centre, angle = False, rotate = False, width = 323):
-    return self._open_cell(gene, terminus, field, crop_centre, fill_centre, phathr = phathr, dnathr = dnathr, angle = angle, rotate = rotate, width = width)
+  def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None, cell_index: int = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
+    """
+    Advanced customisable open cell, opens a cell from a `gene_id`, `terminus` and `field_index`, but with customisable images, cell coordinates and/or angle.
+    Allows use of custom pth and cell coordinates, default cell coordinates but prefiltered mng, etc.
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param field_index: Index of the field of view. If not set, then `0`.
+    :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimages or None. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    :param cell_index: Index of the cell in the field of view, used for finding default `fill_centre` and `crop_centre` coordinates. If not set or `None`, then use `fill_centre` coordinate.
+    :param fill_centre: `(x, y)` tuple of a pixel which is in the target cell object (pixel value 255) in pth image.
+    :param crop_centre: `(x, y)` tuple around which to crop, otherwise crop around `fill_centre`.
+    :param rotate: Whether or not to rotate the cell.
+    :param angle: Angle in degrees to rotate cell clockwise. If not set or `None`, tryptag default.
+    :param width: Cropped image width. Default 323 pixels. If too small, the cell may extend beyond the image bounds.
+    """
+    # set images to list of Nones, if None
+    if images is None:
+      images = [None, None, None, None, None]
+    # if cell_index is set, then use tryptag defaults unless overridden
+    if cell_index is not None:
+      cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
+      if crop_centre is None:
+        crop_centre = cell_data["centre"]
+        fill_centre = cell_data["wand"]
+      else:
+        # if custom fill_centre, check for crop_centre otherwise default to fill_centre
+        if fill_centre is None:
+          fill_centre = crop_centre
+      if angle is not None:
+        # if not a custom angle
+        angle = cell_data["angle"]
+    return self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, images, angle = angle, rotate = rotate, width = width)
 
   # worker for multiprocess/thread analysis
   # iterates through work_list of {"gene_id": gene_id, "terminus": terminus} entries
