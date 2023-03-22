@@ -539,12 +539,14 @@ class TrypTag:
         self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
         self.gene_list[gene_id][terminus]["cells"] = cells.copy()
 
-  # checks if cached image data is available for gene and terminus
-  def check_if_cached(self, gene_id, terminus):
-    # False if gene_list or zenodo_index have not been loaded yet
-    # Check for attributes in `__dict__` - `functools.cached_property` writes an attribute of the same name
-    if not (("gene_list" in self.__dict__) and ("zenodo_index" in self.__dict__)):
-      return False
+  def check_if_cached(self, gene_id: str, terminus: str) -> bool:
+    """
+    Checks if data is cached for a given `gene_id` and `terminus`
+
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :return: True or false
+    """
     # path for data subdirectory
     plate = self.gene_list[gene_id][terminus]["plate"]
     dir_path = os.path.join(self.data_cache_path, plate)
