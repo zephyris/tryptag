@@ -680,7 +680,7 @@ class TrypTag:
     angle = cell_data["angle"]
     return self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
 
-  def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None, cell_index: int = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
+  def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, images: list = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
     """
     Advanced customisable open cell, opens a cell from a `gene_id`, `terminus` and `field_index`, but with customisable images, cell coordinates and/or angle.
     Allows use of custom pth and cell coordinates, default cell coordinates but prefiltered mng, etc.
@@ -700,7 +700,7 @@ class TrypTag:
       images = [None, None, None, None, None]
     # if cell_index is set, then use tryptag defaults unless overridden
     if cell_index is not None:
-      cell_data = self.gene_list[gene][terminus]["cells"][field][cell]
+      cell_data = self.gene_list[gene_id][terminus]["cells"][field][cell]
       if crop_centre is None:
         crop_centre = cell_data["centre"]
         fill_centre = cell_data["wand"]
