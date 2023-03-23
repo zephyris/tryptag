@@ -452,37 +452,33 @@ class TrypTag:
     if free < space_required:
       if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
 
-  def _count_cells(self, plate: str):
+  def _count_cells(self, gene_id: str, terminus: str):
     """
-    Counts the number of fields of view and cells in them for `plate` in from the data cache.
+    Counts the number of fields of view and cells in them for `gene_id` `terminus` from the data cache.
     Records the data in `self.gene_list`, as `fields_count` `int`, `cells_per_field` `list` and `cells` `list` of `list`.
 
-    :param plate: Plate name to count images for
+    :param gene_id: Gene ID.
+    :param terminus: Tagged terminus, `"n"` or `"c"`.
     """
-    base_path = os.path.join(self.data_cache_path, plate)
-    for gene_id in self.gene_list:
-      for terminus in self.termini:
-        if terminus in self.gene_list[gene_id]:
-          if self.gene_list[gene_id][terminus]["plate"] == plate:
-            # only count if gene_id and terminus on current plate
-            if "cells" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
-              if self.print_status: print("  Counting image data files for: "+gene_id+" "+terminus)
-              cells = []
-              for i in range(len(glob.glob(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_*_roisCells.txt")))):
-                with open(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
-                  lines = cells_file.readlines()
-                  cells.append([])
-                  for line in lines:
-                    line = line.split("\t")
-                    if line[0] != "cell":
-                      cell_data = {}
-                      cell_data["wand"] = (int(line[1]), int(line[2]))
-                      cell_data["centre"] = (float(line[3]), float(line[4]))
-                      cell_data["angle"] = float(line[7])
-                      cells[-1].append(cell_data)
-              self.gene_list[gene_id][terminus]["fields_count"] = len(cells)
-              self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
-              self.gene_list[gene_id][terminus]["cells"] = cells.copy()
+    base_path = os.path.join(self.data_cache_path, self.gene_list[gene_id][terminus]["plate"])
+    if "cells" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
+      cells = []
+      for i in range(len(glob.glob(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_*_roisCells.txt")))):
+        with open(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
+          lines = cells_file.readlines()
+          cells.append([])
+          for line in lines:
+            line = line.split("\t")
+            if line[0] != "cell":
+              cell_data = {}
+              cell_data["wand"] = (int(line[1]), int(line[2]))
+              cell_data["centre"] = (float(line[3]), float(line[4]))
+              cell_data["angle"] = float(line[7])
+              cells[-1].append(cell_data)
+      self.gene_list[gene_id][terminus]["fields_count"] = len(cells)
+      self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
+      self.gene_list[gene_id][terminus]["cells"] = cells.copy()
+      if self.print_status: print("  Counted", self.gene_list[gene_id][terminus]["fields_count"], "image data files with", sum(self.gene_list[gene_id][terminus]["cells_per_field"]), "cells for", gene_id, terminus)
 
   def fetch_data(self, gene_id: str, terminus: str):
     """
@@ -638,7 +634,7 @@ class TrypTag:
       finally:
         lock.release()
       # count fields of view and number of cells
-      self._count_cells(plate)
+      self._count_cells(gene_id, terminus)
 
   def check_if_cached(self, gene_id: str, terminus: str) -> bool:
     """
@@ -663,9 +659,13 @@ class TrypTag:
     Any MD5 hash missmatches imply a new version of data for that plate may be available.
     Checks the number of images available per cell line for obvious missing data.
     Does not do a full check and may well throw `FileNotFoundError` if data cache is very malformed.
+    Temporarily overrides `self.print_status` to `False` so only its specific output is shown.
     """
     import os
-    if self.print_status: print("Checking data cache for errors")
+    # temporarily silence verbose output
+    original_print_status = self.print_status
+    self.print_status = False
+    print("Checking data cache for errors")
     for plate in self.zenodo_index:
       zip_path = os.path.join(self.data_cache_path, plate+".zip")
       dir_path = os.path.join(self.data_cache_path, plate)
@@ -682,45 +682,42 @@ class TrypTag:
         md5_file = os.path.join(dir_path, "_"+plate+".zip.md5")
         if not os.path.isfile(md5_file):
           # missing md5, likely partial decompression
-          if self.print_status: print("  MD5 file mising from image directory:", plate)
+          print("  MD5 file mising from image directory:", plate)
         else:
           with open(md5_file, "r") as file:
             # md5 missmatch check
             md5 = file.read()
             if md5 != self.zenodo_index[plate]["record_md5"]:
-              if self.print_status: print("  MD5 file in directory does not match zenodo record md5:", plate)
+              print("  MD5 file in directory does not match zenodo record md5:", plate)
       if os.path.isfile(zip_path):
         # check zip saved md5 vs zenodo latest
         if self.remove_zip_files:
           # zip present, but should have been removed
-          if self.print_status: print("  Zip found which should have been removed:", plate)
+          print("  Zip found which should have been removed:", plate)
         md5_file = os.path.join(zip_path+".md5")
         if not os.path.isfile(md5_file):
           # missing md5, likely incomplete zip download
-          if self.print_status: print("  MD5 file mising for zip file:", plate)
+          print("  MD5 file mising for zip file:", plate)
         else:
           with open(md5_file, "r") as file:
             # md5 missmatch check
             md5 = file.read()
             if md5 != self.zenodo_index[plate]["record_md5"]:
-              if self.print_status: print("  MD5 file for zip file does not match zenodo record MD5:", plate)
+              print("  MD5 file for zip file does not match zenodo record MD5:", plate)
       # then, check if there are images for every gene in the plate
       if os.path.isdir(dir_path):
-        # temporarily silence verbose output
-        original_print_status = self.print_status
-        self.print_status = False
-        # ensure cells are counted
-        self._count_cells(plate)
         # for all gene_id/terminus
         for gene_id in self.gene_list:
           for terminus in self.termini:
             if terminus in self.gene_list[gene_id]:
               if self.gene_list[gene_id][terminus]["plate"] == plate:
                 if "cells" in self.gene_list[gene_id][terminus]:
+                  # ensure cells are counted
+                  self._count_cells(gene_id, terminus)
                   if len(self.gene_list[gene_id][terminus]["cells"]) == 0:
                     print("  No images found, but images expected, for", gene_id, terminus, "in", plate)
         # restore verbose output state
-        self.print_status = original_print_status
+    self.print_status = original_print_status
 
   def fetch_all_data(self):
     """
