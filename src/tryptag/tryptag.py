@@ -739,7 +739,7 @@ class TrypTag:
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
-    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask]`.
     """
     # ensure data is fetched
     terminus = terminus.lower()
@@ -814,7 +814,7 @@ class TrypTag:
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param rotate: Whether or not to rotate the cell, default `False`.
     :param angle: Angle in degrees to rotate cell clockwise. Default 0.
-    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_thr, dna_thr, phase_thr_othercells]`.
+    :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells]`.
     """
     # define image crop function
     def _skimage_crop(image, x, y, w, h):
@@ -887,7 +887,6 @@ class TrypTag:
       phase=phase,
     )
 
-
   def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, custom_field_image = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
     """
     Advanced customisable open cell, opens a cell from a `gene_id`, `terminus` and `field_index`, but with customisable images, cell coordinates and/or angle.
@@ -896,8 +895,8 @@ class TrypTag:
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
-    :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param cell_index: Index of the cell in the field of view, used for finding default `fill_centre` and `crop_centre` coordinates. If not set or `None`, then use `fill_centre` coordinate.
+    :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param fill_centre: `(x, y)` tuple of a pixel which is in the target cell object (pixel value 255) in pth image.
     :param crop_centre: `(x, y)` tuple around which to crop, otherwise crop around `fill_centre`.
     :param rotate: Whether or not to rotate the cell.
@@ -905,18 +904,6 @@ class TrypTag:
     :param width: Cropped image width. Default 323 pixels. If too small, the cell may extend beyond the image bounds.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
-    # set custom_field_image to FieldImage with Nones for images, if None
-    if custom_field_image is None:
-      custom_field_image = FieldImage(
-        phase=None,
-        mng=None,
-        dna=None,
-        phase_mask=None,
-        dna_mask=None,
-        gene_id=gene_id,
-        terminus=terminus,
-        field_index=field_index,
-      )
     # if cell_index is set, then use tryptag defaults unless overridden
     if cell_index is not None:
       cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
@@ -924,13 +911,15 @@ class TrypTag:
         crop_centre = cell_data["centre"]
       if fill_centre is None:
         fill_centre = cell_data["wand"]
-      else:
-        # if custom fill_centre, check for crop_centre otherwise default to fill_centre
-        if fill_centre is None:
-          fill_centre = crop_centre
-      if angle is not None:
-        # if not a custom angle
+      if angle is None:
         angle = cell_data["angle"]
+    else:
+      # crop_centre must be set, if not then throw error
+      if fill_centre is None:
+        raise ValueError("If `cell_index` is not set or `None` then `fill_centre` must be set and not be `None`")
+      # if custom fill_centre, check for crop_centre otherwise default to fill_centre
+      if crop_centre is None:
+        crop_centre = fill_centre
     [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, custom_field_image, angle = angle, rotate = rotate, width = width)
     return CellImage(
       phase=phase,
