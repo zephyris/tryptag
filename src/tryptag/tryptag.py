@@ -95,6 +95,9 @@ class TrypTag:
     # image properties
     self.um_per_px = um_per_px
 
+    # standard terminus names
+    self.termini = ["n", "c"]
+
     # global variable for caching strings requested from urls
     self._url_str_cache = {}
 
@@ -268,7 +271,7 @@ class TrypTag:
         "gene_id": gene_id,
         "terminus": terminus,
       } for gene_id, terminus in
-      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if terminus in gene_entry)
+      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in self.termini if terminus in gene_entry)
     ]
 
   @cached_property
@@ -281,7 +284,7 @@ class TrypTag:
         "gene_id": gene_id,
         "terminus": terminus,
       } for gene_id, terminus in
-      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in ["n", "c"] if "wild-type" in gene_id and terminus in gene_entry)
+      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in self.termini if "wild-type" in gene_id and terminus in gene_entry)
     ]
 
   @cached_property
@@ -394,7 +397,7 @@ class TrypTag:
     # check all against query
     hits = []
     for gene_id in self.gene_list:
-      for terminus in ["n", "c"]:
+      for terminus in self.termini:
         if terminus in self.gene_list[gene_id]:
           if self.localisation_match(gene_id, terminus, query_term, match_subterms=match_subterms, exclude_modifiers=exclude_modifiers, required_modifiers=required_modifiers):
             hits.append({
@@ -705,7 +708,7 @@ class TrypTag:
         self.print_status = False
         # for all gene_id/terminus
         for gene_id in self.gene_list:
-          for terminus in ["n", "c"]:
+          for terminus in self.termini:
             if terminus in self.gene_list[gene_id]:
               if self.gene_list[gene_id][terminus]["plate"] == plate:
                 # if on the current plate, use self._count_cells to check data
