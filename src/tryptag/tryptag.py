@@ -452,34 +452,37 @@ class TrypTag:
     if free < space_required:
       if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
 
-  def _count_cells(self, gene_id: str, terminus: str):
+  def _count_cells(self, plate: str):
     """
-    Counts the number of fields of view and cells in them from the data cache.
+    Counts the number of fields of view and cells in them for `plate` in from the data cache.
     Records the data in `self.gene_list`, as `fields_count` `int`, `cells_per_field` `list` and `cells` `list` of `list`.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param plate: Plate name to count images for
     """
-    plate = self.gene_list[gene_id][terminus]["plate"]
     base_path = os.path.join(self.data_cache_path, plate)
-    if "cells" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
-      if self.print_status: print("  Counting image data files for: "+gene_id+" "+terminus)
-      cells = []
-      for i in range(len(glob.glob(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_*_roisCells.txt")))):
-        with open(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
-          lines = cells_file.readlines()
-          cells.append([])
-          for line in lines:
-            line = line.split("\t")
-            if line[0] != "cell":
-              cell_data = {}
-              cell_data["wand"] = (int(line[1]), int(line[2]))
-              cell_data["centre"] = (float(line[3]), float(line[4]))
-              cell_data["angle"] = float(line[7])
-              cells[-1].append(cell_data)
-      self.gene_list[gene_id][terminus]["fields_count"] = len(cells)
-      self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
-      self.gene_list[gene_id][terminus]["cells"] = cells.copy()
+    for gene_id in self.gene_list:
+      for terminus in self.termini:
+        if terminus in self.gene_list[gene_id]:
+          if self.gene_list[gene_id][terminus]["plate"] == plate:
+            # only count if gene_id and terminus on current plate
+            if "cells" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
+              if self.print_status: print("  Counting image data files for: "+gene_id+" "+terminus)
+              cells = []
+              for i in range(len(glob.glob(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_*_roisCells.txt")))):
+                with open(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
+                  lines = cells_file.readlines()
+                  cells.append([])
+                  for line in lines:
+                    line = line.split("\t")
+                    if line[0] != "cell":
+                      cell_data = {}
+                      cell_data["wand"] = (int(line[1]), int(line[2]))
+                      cell_data["centre"] = (float(line[3]), float(line[4]))
+                      cell_data["angle"] = float(line[7])
+                      cells[-1].append(cell_data)
+              self.gene_list[gene_id][terminus]["fields_count"] = len(cells)
+              self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
+              self.gene_list[gene_id][terminus]["cells"] = cells.copy()
 
   def fetch_data(self, gene_id: str, terminus: str):
     """
@@ -635,7 +638,7 @@ class TrypTag:
       finally:
         lock.release()
       # count fields of view and number of cells
-      self._count_cells()
+      self._count_cells(plate)
 
   def check_if_cached(self, gene_id: str, terminus: str) -> bool:
     """
@@ -706,19 +709,18 @@ class TrypTag:
         # temporarily silence verbose output
         original_print_status = self.print_status
         self.print_status = False
+        # ensure cells are counted
+        self._count_cells(plate)
         # for all gene_id/terminus
         for gene_id in self.gene_list:
           for terminus in self.termini:
             if terminus in self.gene_list[gene_id]:
               if self.gene_list[gene_id][terminus]["plate"] == plate:
-                # if on the current plate, use self._count_cells to check data
-                self._count_cells(gene_id, terminus)
                 if "cells" in self.gene_list[gene_id][terminus]:
                   if len(self.gene_list[gene_id][terminus]["cells"]) == 0:
                     print("  No images found, but images expected, for", gene_id, terminus, "in", plate)
         # restore verbose output state
         self.print_status = original_print_status
-
 
   def fetch_all_data(self):
     """
@@ -729,19 +731,16 @@ class TrypTag:
       for terminus in ["c", "n"]:
         self.fetch_data(gene_id, terminus)
 
-  def _open_field(self, gene_id: str, terminus: str, field_index: int = 0, images: list = None) -> list:
+  def _open_field(self, gene_id: str, terminus: str, field_index: int = 0, custom_field_image = None) -> list:
     """
     Returns field of view image data.
 
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
-    :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
-    # set images to list of Nones, if None
-    if images is None:
-      images = [None, None, None, None, None]
     # ensure data is fetched
     terminus = terminus.lower()
     self.fetch_data(gene_id, terminus)
@@ -760,24 +759,25 @@ class TrypTag:
       self._thresholds_sk = []
       for threshold in field_threshold:
         self._thresholds_sk.append(threshold.copy())
-    # setup output
-    for image_index, image in enumerate(images):
-      if image is not None:
-        # if a custom image provided, then copy
-        images[image_index] = image.copy()
-      else:
-        # otherwise, populate from loaded channels/thresholds
-        if image_index < 3:
-          # channel images
-          if image_index == 1:
-            # uint32 for mng
-            images[image_index] = self._channels_sk[image_index].astype("uint32").copy()
-          else:
-            # uint16 otherwise
-            images[image_index] = self._channels_sk[image_index].astype("uint16").copy()
-        else:
-          # threshold images, uint8
-          images[image_index] = self._thresholds_sk[image_index - 3].astype("uint8").copy()
+    # setup output, copying images as downstream usage may modify
+    images = []
+    images.append(self._channels_sk[0].astype("uint16").copy())
+    images.append(self._channels_sk[1].astype("uint32").copy())
+    images.append(self._channels_sk[2].astype("uint16").copy())
+    images.append(self._thresholds_sk[0].astype("uint8").copy())
+    images.append(self._thresholds_sk[1].astype("uint8").copy())
+    if custom_field_image is not None:
+      # if not None, overwrite with custom data
+      if custom_field_image.phase is not None:
+        images[0] = custom_field_image.phase.copy()
+      if custom_field_image.mng is not None:
+        images[1] = custom_field_image.mng.copy()
+      if custom_field_image.dna is not None:
+        images[2] = custom_field_image.dna.copy()
+      if custom_field_image.phase_mask is not None:
+        images[3] = custom_field_image.phase_mask.copy()
+      if custom_field_image.dna_mask is not None:
+        images[4] = custom_field_image.dna_mask.copy()
     return images
 
   def open_field(self, gene_id: str, terminus: str, field_index: int = 0) -> list:
@@ -802,7 +802,7 @@ class TrypTag:
     )
 
   # master function for opening a cell
-  def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, images: list = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
+  def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, custom_field_image = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
     """
     Returns cell image data, returning a list with one `skimage` image per image channel and threshold image.
 
@@ -811,7 +811,7 @@ class TrypTag:
     :param field_index: Index of the field of view. If not set, then `0`.
     :param crop_centre: `(x, y)` tuple around which to crop.
     :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell opbect in pth.
-    :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param rotate: Whether or not to rotate the cell, default `False`.
     :param angle: Angle in degrees to rotate cell clockwise. Default 0.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_thr, dna_thr, phase_thr_othercells]`.
@@ -826,7 +826,7 @@ class TrypTag:
     else:
       width_inter = width
     # open field, passing custom images
-    channels = self._open_field(gene_id, terminus, field_index, images = images)
+    channels = self._open_field(gene_id, terminus, field_index, custom_field_image = custom_field_image)
     # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
     channels[3][channels[3] == 255] = 127
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
@@ -888,7 +888,7 @@ class TrypTag:
     )
 
 
-  def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, images: list = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
+  def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, custom_field_image = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
     """
     Advanced customisable open cell, opens a cell from a `gene_id`, `terminus` and `field_index`, but with customisable images, cell coordinates and/or angle.
     This allows use of custom pth image and cell coordinates, default cell coordinates but prefiltered mng image, etc.
@@ -896,7 +896,7 @@ class TrypTag:
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
-    :param images: List containing custom field images to use, in the order `[pha, mng, dna, pth, dth]`. List entries should be skimages or None. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
+    :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param cell_index: Index of the cell in the field of view, used for finding default `fill_centre` and `crop_centre` coordinates. If not set or `None`, then use `fill_centre` coordinate.
     :param fill_centre: `(x, y)` tuple of a pixel which is in the target cell object (pixel value 255) in pth image.
     :param crop_centre: `(x, y)` tuple around which to crop, otherwise crop around `fill_centre`.
@@ -905,9 +905,18 @@ class TrypTag:
     :param width: Cropped image width. Default 323 pixels. If too small, the cell may extend beyond the image bounds.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
-    # set images to list of Nones, if None
-    if images is None:
-      images = [None, None, None, None, None]
+    # set custom_field_image to FieldImage with Nones for images, if None
+    if custom_field_image is None:
+      custom_field_image = FieldImage(
+        phase=None,
+        mng=None,
+        dna=None,
+        phase_mask=None,
+        dna_mask=None,
+        gene_id=gene_id,
+        terminus=terminus,
+        field_index=field_index,
+      )
     # if cell_index is set, then use tryptag defaults unless overridden
     if cell_index is not None:
       cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
@@ -922,7 +931,7 @@ class TrypTag:
       if angle is not None:
         # if not a custom angle
         angle = cell_data["angle"]
-    [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, images, angle = angle, rotate = rotate, width = width)
+    [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, custom_field_image, angle = angle, rotate = rotate, width = width)
     return CellImage(
       phase=phase,
       mng=mng,
