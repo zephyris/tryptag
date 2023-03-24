@@ -480,7 +480,7 @@ class TrypTag:
       self.gene_list[gene_id][terminus]["cells"] = cells.copy()
       if self.print_status: print("  Counted", self.gene_list[gene_id][terminus]["fields_count"], "image data files with", sum(self.gene_list[gene_id][terminus]["cells_per_field"]), "cells for", gene_id, terminus)
 
-  def fetch_data(self, gene_id: str, terminus: str):
+  def fetch_data(self, gene_id: str, terminus: str) -> list:
     """
     Downloads and caches microscopy data for the plate containing a `gene_id` and `terminus` combination
     Places data in `self.data_cache_path`
@@ -488,6 +488,7 @@ class TrypTag:
 
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :return: List of dicts of all cells for this `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
     """
     # progress bar object for file download/unzipping
     global _progress_bar
@@ -635,6 +636,12 @@ class TrypTag:
         lock.release()
       # count fields of view and number of cells
       self._count_cells(gene_id, terminus)
+      # return field/cell list
+      fieldcell_list = []
+      for field_index, cell_list in enumerate(self.gene_list[gene_id][terminus]["cells"]):
+        for cell_index, cell in enumerate(cell_list):
+          fieldcell_list.append({"field_index": field_index, "cell_index": cell_index})
+      return fieldcell_list
 
   def check_if_cached(self, gene_id: str, terminus: str) -> bool:
     """
