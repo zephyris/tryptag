@@ -749,6 +749,9 @@ class TrypTag:
       field_image = skimage.io.imread(self._field_base_path_sk+".tif")
       field_image = numpy.moveaxis(field_image, [0, 1, 2], [1, 2, 0]) # MAGIC NUMBER: correct loading in a weird order
       field_threshold = skimage.io.imread(self._field_base_path_sk+"_thr.tif")
+      # 'clean' the field_threshold images, ensure all pixels less than 255 are set to 0
+      for image in field_threshold:
+        image[image < 255] = 0
       # store a copy of the images in 
       self._channels_sk = []
       for channel in field_image:
