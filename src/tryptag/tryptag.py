@@ -808,22 +808,19 @@ class TrypTag:
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
-    :param crop_centre: `(x, y)` tuple around which to crop.
-    :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell opbect in pth.
+    :param crop_centre: `(x, y)` tuple around which to crop. Ignored if `width <= 0`.
+    :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell object in phase_mask.
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
-    :param rotate: Whether or not to rotate the cell, default `False`.
+    :param rotate: Whether or not to rotate the cell, default `False`. Ignored if `width <= 0`
     :param angle: Angle in degrees to rotate cell clockwise. Default 0.
+    :param width: If positive, width of cropped cell image centred on `crop_centre`. If negative, padding around the `phase_mask`. Default, `323`.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells]`.
     """
+
     # define image crop function
     def _skimage_crop(image, x, y, w, h):
       return image[int(y):int(y + h), int(x):int(x + w)]
-    # establish output image size, half height if rotating
-    if rotate:
-      width_inter = width * 1.5 # greater than width * 2**0.5
-      height = round(width / 2)
-    else:
-      width_inter = width
+
     # open field, passing custom images
     channels = self._open_field(gene_id, terminus, field_index, custom_field_image = custom_field_image)
     # process phase threshold image to split cell of interest from neighbouring cells, nb. xy swapped in skimage arrays
@@ -835,23 +832,38 @@ class TrypTag:
     channels.append(255*(channels[3] == 127))
     # filter channels index 3 for current cell only, set pixels equal to 127 to zero
     channels[3][channels[3] == 127] = 0
-    # Crop (and rotate)
+
+    # crop (and potentially rotate) to get cell image
     cell_channels = []
-    for channel in channels:
-      # if crop outside of image bounds, then first increase canvas size
-      offs = 0
-      half_width_inter = round(width_inter / 2)
-      if crop_centre[0] - half_width_inter < 0 or crop_centre[1] - half_width_inter < 0 or crop_centre[0] + half_width_inter > channel.shape[1] or crop_centre[1] + half_width_inter > channel.shape[0]:
-        channel = numpy.pad(channel, ((half_width_inter, half_width_inter), (half_width_inter, half_width_inter)), mode="median")
-        offs = half_width_inter
-      # square crop
-      channel = _skimage_crop(channel, crop_centre[0] + offs - half_width_inter, crop_centre[1] + offs - half_width_inter, width_inter, width_inter)
+    if width < 0:
+      # padding mode
+      # TODO!
+      currently = "do nothing"
+    elif width > 0:
+      # fixed width mode
       if rotate:
-        # if rotating, rotate then crop to final dimensions
-        channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
-        channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
-        channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
-      cell_channels.append(channel)
+        width_inter = width * 1.5 # greater than width * 2**0.5
+        height = round(width / 2)
+      else:
+        width_inter = width
+      # do actual cropping
+      for channel in channels:
+        # if crop outside of image bounds, then first increase canvas size
+        offs = 0
+        half_width_inter = round(width_inter / 2)
+        if crop_centre[0] - half_width_inter < 0 or crop_centre[1] - half_width_inter < 0 or crop_centre[0] + half_width_inter > channel.shape[1] or crop_centre[1] + half_width_inter > channel.shape[0]:
+          channel = numpy.pad(channel, ((half_width_inter, half_width_inter), (half_width_inter, half_width_inter)), mode="median")
+          offs = half_width_inter
+        # square crop
+        channel = _skimage_crop(channel, crop_centre[0] + offs - half_width_inter, crop_centre[1] + offs - half_width_inter, width_inter, width_inter)
+        if rotate:
+          # if rotating, rotate then crop to final dimensions
+          channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
+          channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
+          channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
+        cell_channels.append(channel)
+    else:
+      raise ValueError("`width` must be a nonzero integer, positive for fixed image width in pixels, negative for padding around phase_mask in pixels.")
     # downstream analysis (including tryptools) allowed to assume cell mask does not touch image edge, therefore set border pixels to 0 (may clip large cells)
     cell_channels[3][:, [0, -1]] = 0
     cell_channels[3][[0, -1], :] = 0
