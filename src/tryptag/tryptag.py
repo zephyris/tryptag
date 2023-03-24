@@ -837,7 +837,6 @@ class TrypTag:
     cell_channels = []
     if width < 0:
       # padding mode
-      # TODO!
       label_image = skimage.measure.label(channels[3])
       (ymin, xmin, ymax, xmax) = skimage.measure.regionprops(label_image)[0]["bbox"]
       # do actual cropping
@@ -864,7 +863,7 @@ class TrypTag:
         if rotate:
           # if rotating, rotate then crop to final dimensions
           channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
-          channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
+          channel = skimage.transform.rotate(channel, -angle, preserve_range=True).astype(channel_dtype)
           channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
         cell_channels.append(channel)
     else:
