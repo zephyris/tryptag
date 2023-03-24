@@ -838,7 +838,12 @@ class TrypTag:
     if width < 0:
       # padding mode
       # TODO!
-      currently = "do nothing"
+      label_image = skimage.measure.label(channels[3])
+      (ymin, xmin, ymax, xmax) = skimage.measure.regionprops(label_image)[0]["bbox"]
+      # do actual cropping
+      for channel in channels:
+        # width = -padding
+        cell_channels.append(channel[ymin + width:ymax - width, xmin + width:xmax - width])
     elif width > 0:
       # fixed width mode
       if rotate:
