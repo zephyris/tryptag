@@ -801,7 +801,6 @@ class TrypTag:
       field_index=field_index,
     )
 
-  # master function for opening a cell
   def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, custom_field_image = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
     """
     Returns cell image data, returning a list with one `skimage` image per image channel and threshold image.
