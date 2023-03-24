@@ -749,6 +749,9 @@ class TrypTag:
       field_image = skimage.io.imread(self._field_base_path_sk+".tif")
       field_image = numpy.moveaxis(field_image, [0, 1, 2], [1, 2, 0]) # MAGIC NUMBER: correct loading in a weird order
       field_threshold = skimage.io.imread(self._field_base_path_sk+"_thr.tif")
+      # 'clean' the field_threshold images, ensure all pixels less than 255 are set to 0
+      for image in field_threshold:
+        image[image < 255] = 0
       # store a copy of the images in 
       self._channels_sk = []
       for channel in field_image:
@@ -798,7 +801,6 @@ class TrypTag:
       field_index=field_index,
     )
 
-  # master function for opening a cell
   def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, custom_field_image = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
     """
     Returns cell image data, returning a list with one `skimage` image per image channel and threshold image.
@@ -806,46 +808,76 @@ class TrypTag:
     :param gene_id: Gene ID.
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
-    :param crop_centre: `(x, y)` tuple around which to crop.
-    :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell opbect in pth.
+    :param crop_centre: `(x, y)` tuple around which to crop. Ignored if `width <= 0`.
+    :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell object in phase_mask.
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
-    :param rotate: Whether or not to rotate the cell, default `False`.
+    :param rotate: Whether or not to rotate the cell, default `False`. Ignored if `width <= 0`
     :param angle: Angle in degrees to rotate cell clockwise. Default 0.
+    :param width: If positive, width of cropped cell image centred on `crop_centre`. If negative, padding around the `phase_mask`. Default, `323`.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells]`.
     """
+
     # define image crop function
     def _skimage_crop(image, x, y, w, h):
       return image[int(y):int(y + h), int(x):int(x + w)]
-    # establish output image size, half height if rotating
-    if rotate:
-      width_inter = width * 1.5 # greater than width * 2**0.5
-      height = round(width / 2)
-    else:
-      width_inter = width
+
     # open field, passing custom images
     channels = self._open_field(gene_id, terminus, field_index, custom_field_image = custom_field_image)
-    # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
+    # process phase threshold image to split cell of interest from neighbouring cells, nb. xy swapped in skimage arrays
+    # replace existing mask pixels with value 127
     channels[3][channels[3] == 255] = 127
+    # flood fill cell of interest to 255
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
-    channels.append(255*(channels[3] == 127)) # append a copy if equal 127, other cells
-    channels[3][channels[3] == 127] = 0 # filter for current cell only
-    # Crop (and rotate)
+    # append a copy (channels index 5), pixels if equal 127 ie. other cells
+    channels.append(255*(channels[3] == 127))
+    # filter channels index 3 for current cell only, set pixels equal to 127 to zero
+    channels[3][channels[3] == 127] = 0
+
+    # crop (and potentially rotate) to get cell image
     cell_channels = []
-    for channel in channels:
-      # if crop outside of image bounds, then first increase canvas size
-      offs = 0
-      half_width_inter = round(width_inter / 2)
-      if crop_centre[0] - half_width_inter < 0 or crop_centre[1] - half_width_inter < 0 or crop_centre[0] + half_width_inter > channel.shape[1] or crop_centre[1] + half_width_inter > channel.shape[0]:
-        channel = numpy.pad(channel, ((half_width_inter, half_width_inter), (half_width_inter, half_width_inter)), mode="median")
-        offs = half_width_inter
-      # square crop
-      channel = _skimage_crop(channel, crop_centre[0] + offs - half_width_inter, crop_centre[1] + offs - half_width_inter, width_inter, width_inter)
+    if width < 0:
+      # padding mode
+      label_image = skimage.measure.label(channels[3])
+      (ymin, xmin, ymax, xmax) = skimage.measure.regionprops(label_image)[0]["bbox"]
+      # do actual cropping
+      for channel in channels:
+        # negative width is padding
+        padding = -width
+        # if crop outside of image bounds, then first increase canvas size
+        offs = 0
+        if ymin - padding < 0 or xmin - padding < 0 or ymax + padding > channel.shape[0] or xmax + padding > channel.shape[1]:
+          channel = numpy.pad(channel, ((padding, padding), (padding, padding)), mode="median")
+          offs = padding
+        # crop
+        cell_channels.append(channel[ymin - padding + offs:ymax + padding + offs, xmin - padding + offs:xmax + padding + offs])
+    elif width > 0:
+      # fixed width mode
       if rotate:
-        # if rotating, rotate then crop to final dimensions
-        channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
-        channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
-        channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
-      cell_channels.append(channel)
+        width_inter = width * 1.5 # greater than width * 2**0.5
+        height = round(width / 2)
+      else:
+        width_inter = width
+      # do actual cropping
+      for channel in channels:
+        # if crop outside of image bounds, then first increase canvas size
+        offs = 0
+        half_width_inter = round(width_inter / 2)
+        if crop_centre[0] - half_width_inter < 0 or crop_centre[1] - half_width_inter < 0 or crop_centre[0] + half_width_inter > channel.shape[1] or crop_centre[1] + half_width_inter > channel.shape[0]:
+          channel = numpy.pad(channel, ((half_width_inter, half_width_inter), (half_width_inter, half_width_inter)), mode="median")
+          offs = half_width_inter
+        # square crop
+        channel = _skimage_crop(channel, crop_centre[0] + offs - half_width_inter, crop_centre[1] + offs - half_width_inter, width_inter, width_inter)
+        if rotate:
+          # if rotating, rotate then crop to final dimensions
+          channel_dtype = channel.dtype # have have to force data type and use preserve_range=True to prevent rotate from mangling the data
+          channel = skimage.transform.rotate(channel, -angle, preserve_range=True).astype(channel_dtype)
+          channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
+        cell_channels.append(channel)
+    else:
+      raise ValueError("`width` must be a nonzero integer, positive for fixed image width in pixels, negative for padding around phase_mask in pixels.")
+    # downstream analysis (including tryptools) allowed to assume cell mask does not touch image edge, therefore set border pixels to 0 (may clip large cells)
+    cell_channels[3][:, [0, -1]] = 0
+    cell_channels[3][[0, -1], :] = 0
     return cell_channels
 
   # open a cell, cropped from a field of view
@@ -860,8 +892,8 @@ class TrypTag:
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param cell_index: Index of the cell in the field of view. If not set, then `0`.
-    :param width: Cropped image width. Default `323` pixels. If too small, the cell may extend beyond the image bounds.
-    :param rotate: Whether or not to rotate the cell. Default `False`.
+    :param width: If positive, width of cropped cell image (may clip very large cells). If negative, padding for crop around the `phase_mask`. Default, `323`.
+    :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask` and `phase_mask_othercells`.
     """
     self.fetch_data(gene_id, terminus)
@@ -869,6 +901,8 @@ class TrypTag:
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
+    if width < 0:
+      rotate = False
     phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
     return CellImage(
       mng=mng,
@@ -896,9 +930,9 @@ class TrypTag:
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param fill_centre: `(x, y)` tuple of a pixel which is in the target cell object (pixel value 255) in pth image.
     :param crop_centre: `(x, y)` tuple around which to crop, otherwise crop around `fill_centre`.
-    :param rotate: Whether or not to rotate the cell.
+    :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :param angle: Angle in degrees to rotate cell clockwise. If not set or `None`, tryptag default.
-    :param width: Cropped image width. Default 323 pixels. If too small, the cell may extend beyond the image bounds.
+    :param width: If positive, width of cropped cell image (may clip very large cells). If negative, padding for crop around the `phase_mask`. Default, `323`.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
     # if cell_index is set, then use tryptag defaults unless overridden
@@ -917,6 +951,8 @@ class TrypTag:
       # if custom fill_centre, check for crop_centre otherwise default to fill_centre
       if crop_centre is None:
         crop_centre = fill_centre
+    if width < 0:
+      rotate = False
     [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, custom_field_image, angle = angle, rotate = rotate, width = width)
     return CellImage(
       phase=phase,
