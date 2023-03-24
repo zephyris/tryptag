@@ -827,11 +827,15 @@ class TrypTag:
       width_inter = width
     # open field, passing custom images
     channels = self._open_field(gene_id, terminus, field_index, custom_field_image = custom_field_image)
-    # process phase threshold image to only have cell of interest, nb. xy swapped in skimage arrays
+    # process phase threshold image to split cell of interest from neighbouring cells, nb. xy swapped in skimage arrays
+    # replace existing mask pixels with value 127
     channels[3][channels[3] == 255] = 127
+    # flood fill cell of interest to 255
     channels[3]=skimage.morphology.flood_fill(channels[3], (fill_centre[1], fill_centre[0]), 255)
-    channels.append(255*(channels[3] == 127)) # append a copy if equal 127, other cells
-    channels[3][channels[3] == 127] = 0 # filter for current cell only
+    # append a copy (channels index 5), pixels if equal 127 ie. other cells
+    channels.append(255*(channels[3] == 127))
+    # filter channels index 3 for current cell only, set pixels equal to 127 to zero
+    channels[3][channels[3] == 127] = 0
     # Crop (and rotate)
     cell_channels = []
     for channel in channels:
@@ -849,6 +853,9 @@ class TrypTag:
         channel = skimage.transform.rotate(channel, angle, preserve_range=True).astype(channel_dtype)
         channel = _skimage_crop(channel, half_width_inter - width / 2, half_width_inter - height / 2, width, height)
       cell_channels.append(channel)
+    # downstream analysis (including tryptools) allowed to assume cell mask does not touch image edge, therefore set border pixels to 0 (may clip large cells)
+    cell_channels[3][:, [0, -1]] = 0
+    cell_channels[3][[0, -1], :] = 0
     return cell_channels
 
   # open a cell, cropped from a field of view
