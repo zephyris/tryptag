@@ -886,8 +886,8 @@ class TrypTag:
     :param terminus: Tagged terminus, `"n"` or `"c"`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param cell_index: Index of the cell in the field of view. If not set, then `0`.
-    :param width: Cropped image width. Default `323` pixels. If too small, the cell may extend beyond the image bounds.
-    :param rotate: Whether or not to rotate the cell. Default `False`.
+    :param width: If positive, width of cropped cell image (may clip very large cells). If negative, padding for crop around the `phase_mask`. Default, `323`.
+    :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask` and `phase_mask_othercells`.
     """
     self.fetch_data(gene_id, terminus)
@@ -895,6 +895,8 @@ class TrypTag:
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
+    if width < 0:
+      rotate = False
     phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
     return CellImage(
       mng=mng,
@@ -922,9 +924,9 @@ class TrypTag:
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :param fill_centre: `(x, y)` tuple of a pixel which is in the target cell object (pixel value 255) in pth image.
     :param crop_centre: `(x, y)` tuple around which to crop, otherwise crop around `fill_centre`.
-    :param rotate: Whether or not to rotate the cell.
+    :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :param angle: Angle in degrees to rotate cell clockwise. If not set or `None`, tryptag default.
-    :param width: Cropped image width. Default 323 pixels. If too small, the cell may extend beyond the image bounds.
+    :param width: If positive, width of cropped cell image (may clip very large cells). If negative, padding for crop around the `phase_mask`. Default, `323`.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase_(gray), mng_(green), dna_(blue), phase_threshold, dna_threshold]`, often referred to as `[pth, mng, dna, pth, dth]`.
     """
     # if cell_index is set, then use tryptag defaults unless overridden
@@ -943,6 +945,8 @@ class TrypTag:
       # if custom fill_centre, check for crop_centre otherwise default to fill_centre
       if crop_centre is None:
         crop_centre = fill_centre
+    if width < 0:
+      rotate = False
     [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, custom_field_image, angle = angle, rotate = rotate, width = width)
     return CellImage(
       phase=phase,
