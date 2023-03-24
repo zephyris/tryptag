@@ -841,8 +841,15 @@ class TrypTag:
       (ymin, xmin, ymax, xmax) = skimage.measure.regionprops(label_image)[0]["bbox"]
       # do actual cropping
       for channel in channels:
-        # width = -padding
-        cell_channels.append(channel[ymin + width:ymax - width, xmin + width:xmax - width])
+        # negative width is padding
+        padding = -width
+        # if crop outside of image bounds, then first increase canvas size
+        offs = 0
+        if ymin - padding < 0 or xmin - padding < 0 or ymax + padding > channel.shape[0] or xmax + padding > channel.shape[1]:
+          channel = numpy.pad(channel, ((padding, padding), (padding, padding)), mode="median")
+          offs = padding
+        # crop
+        cell_channels.append(channel[ymin - padding + offs:ymax + padding + offs, xmin - padding + offs:xmax + padding + offs])
     elif width > 0:
       # fixed width mode
       if rotate:
