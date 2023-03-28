@@ -14,49 +14,103 @@ import skimage.io
 import skimage.morphology
 import skimage.transform
 
-class CellLine(NamedTuple):
+class CellLine:
   """
   CellLine object holding information on a cell line dataset - life cycle stage, tagged gene and tagged terminus.
   """
-  gene_id: str
-  terminus: str
-  life_stage: str
+  def __init__(
+    self,
+    gene_id: str,
+    terminus: str,
+    life_stage: str = None
+  ):
+    self.gene_id = gene_id
+    self.terminus = terminus
+    self.life_stage = life_stage
+
+  def __repr__(self):
+    return self.__str__()
 
   def __str__(self):
-    return f"CellLine gene_id={self.gene_id} terminus={self.terminus} life_stage={self.life_stage} "
+    return " ".join([str(x) for x in ["gene_id =", self.gene_id, "terminus =", self.terminus, "life_stage =", self.life_stage]])
 
-class CellImage(NamedTuple):
+class CellImage():
   """
   CellImage object holding information on a (cropped) section of a TrypTag image containing a specific cell.
   """
-  phase: Any
-  mng: Any
-  dna: Any
-  phase_mask: Any
-  dna_mask: Any
-  phase_mask_othercells: Any
-  cell_line: Any
-  field_index: int
-  cell_index: int
-  rotated: bool
+  def __init__(
+    self,
+    phase: Any,
+    mng: Any,
+    dna: Any,
+    phase_mask: Any,
+    dna_mask: Any,
+    phase_mask_othercells: Any,
+    rotated: bool,
+    field_index: int = 0,
+    cell_index: int = 0,
+    cell_line: Any = None
+  ):
+    self.phase = phase
+    self.mng = mng
+    self.dna = dna
+    self.phase_mask = phase_mask
+    self.dna_mask = dna_mask
+    self.phase_mask_othercells = phase_mask_othercells
+    self.rotated = rotated
+    self.field_index = field_index
+    self.cell_index = cell_index
+    self.cell_line = cell_line
+
+  def __repr__(self):
+    string = "\n".join([str(x) for x in ["phase", self.phase, "mng", self.mng, "dna", self.dna, "phase_mask", self.phase_mask, "dna_mask", self.dna_mask, "phase_mask_othercells", self.phase_mask_othercells]])
+    if self.cell_line is not None:
+      string += "\n" + str(self.cell_line)
+    string += "\n" + " ".join([str(x) for x in ["field_index =", self.field_index, "cell_index =", self.cell_index, "rotated =", self.rotated]])
+    return string
 
   def __str__(self):
-    return f"CellImage gene_id={self.gene_id} field_index={self.field_index} cell_index={self.cell_index} "
+    string = ""
+    if self.cell_line is not None:
+      string += str(self.cell_line)
+    string += " " + " ".join([str(x) for x in ["field_index =", self.field_index, "cell_index =", self.cell_index, "rotated =", self.rotated]])
+    return string
 
-class FieldImage(NamedTuple):
+class FieldImage():
   """
   FieldImage object holding information on a TrypTag image.
   """
-  phase: Any
-  mng: Any
-  dna: Any
-  phase_mask: Any
-  dna_mask: Any
-  cell_line: Any
-  field_index: int
+  def __init__(
+    self,
+    phase: Any,
+    mng: Any,
+    dna: Any,
+    phase_mask: Any,
+    dna_mask: Any,
+    field_index: int = None,
+    cell_line: Any = None
+  ):
+    self.phase = phase
+    self.mng = mng
+    self.dna = dna
+    self.phase_mask = phase_mask
+    self.dna_mask = dna_mask
+    self.field_index = field_index
+    self.cell_line = cell_line
+
+  def __repr__(self):
+    string = "\n".join([str(x) for x in ["phase", self.phase, "mng", self.mng, "dna", self.dna, "phase_mask", self.phase_mask, "dna_mask", self.dna_mask]])
+    if self.cell_line is not None:
+      string += "\n" + str(self.cell_line)
+    string += "\n" + " ".join([str(x) for x in ["field_index =", self.field_index]])
+    return string
 
   def __str__(self):
-    return f"FieldImage gene_id={self.gene_id} field_index={self.field_index}"
+    string = ""
+    if self.cell_line is not None:
+      string += str(self.cell_line)
+    string += " " + " ".join([str(x) for x in ["field_index =", self.field_index]])
+    return string
 
 class TrypTag:
   def __init__(
@@ -768,6 +822,9 @@ class TrypTag:
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask]`.
     """
+    # check for none life_stage, replace with default
+    if cell_line.life_stage is None:
+      cell_line.life_stage = self.life_stages[0]
     # ensure data is fetched
     self.fetch_data(cell_line)
     # determine base path for files
@@ -921,12 +978,13 @@ class TrypTag:
     :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask` and `phase_mask_othercells`.
     """
+    if cell_line.life_stage is None:
+      cell_line.life_stage = self.life_stages[0]
     self.fetch_data(cell_line)
     cell_data = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"][field_index][cell_index]
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
-    print(cell_data)
     if width < 0:
       rotate = False
     phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells = self._open_cell(cell_line, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
