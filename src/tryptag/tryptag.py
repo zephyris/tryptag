@@ -211,17 +211,17 @@ class TrypTag:
     text = response.read().decode(response.info().get_param("charset") or "utf-8-sig")
     # cache in memory
     self._url_str_cache[url] = text
+    # make directories for file cache
+    if not os.path.isdir(self.data_cache_path):
+      if self.print_status: print("Making data cache directory: "+self.data_cache_path)
+      os.mkdir(self.data_cache_path)
+    if not os.path.isdir(zenodo_cache_path):
+      if self.print_status: print("  making zenodo cache directory: "+zenodo_cache_path)
+      os.mkdir(zenodo_cache_path)
     # cache as file, using filelock to avoid double writes
     lock = FileLock(file_cache_path+".lock")
     lock.acquire()
     try:
-      # make directories for file cache
-      if not os.path.isdir(self.data_cache_path):
-        if self.print_status: print("Making data cache directory: "+self.data_cache_path)
-        os.mkdir(self.data_cache_path)
-      if not os.path.isdir(zenodo_cache_path):
-        if self.print_status: print("  making zenodo cache directory: "+zenodo_cache_path)
-        os.mkdir(zenodo_cache_path)
       # write to cache
       with open(file_cache_path, "w") as f:
         f.write(text)
