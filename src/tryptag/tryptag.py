@@ -174,18 +174,28 @@ class TrypTag:
     # variables for handling of different data sources
     self.life_stages = life_stages
 
-  # TODO: Cache per session(?)
-  def _fetch_zenodo_text(self, url: str) -> str:
+  def _fetch_zenodo_text(self, url: str, use_file_cache: bool = True) -> str:
     """
     Data retrieval helper function. Fetch a string from any Zenodo URL, respecting rate limits.
+    Caches data as text files in `_zenodo` subdirectory of `data_cache_path`.
+    Also caches data in memory in `self._url_str_cache` to boost performance.
 
     :param url: Zenodo URL.
+    :param use_file_cache: Read from cached file, if available.
     :return: String of the contents of URL.
     """
-    # TODO: Implement caching to avoid hammering Zenodo URLs and 
-    # check cache and return string
+    # check memory cache and return string if in memory
+    print(url)
     if url in self._url_str_cache:
+      if self.print_status: print("  Using memory cache")
       return self._url_str_cache[url]
+    # check file cache and, if cached, read file and return string
+    zenodo_cache_path = os.path.join(self.data_cache_path, "_zenodo")
+    file_cache_path = os.path.join(zenodo_cache_path, url[len("https://"):].replace("/", "-")+".txt")
+    if os.path.isfile(file_cache_path):
+      if self.print_status: print("  Using file cache")
+      with open(file_cache_path, "r") as f:
+        return f.read()
     # otherwise, fetch from url
     from urllib.request import urlopen
     from urllib.error import HTTPError
@@ -199,8 +209,25 @@ class TrypTag:
         if self.print_status: print("  Zenodo query rate limit reached, waiting to retry")
         time.sleep(60) # MAGIC NUMBER: testing shows the rate limiter resets after 50s, so 60s for a bit of space
     text = response.read().decode(response.info().get_param("charset") or "utf-8-sig")
-    # cache and return
+    # cache in memory
     self._url_str_cache[url] = text
+    # cache as file, using filelock to avoid double writes
+    lock = FileLock(file_cache_path+".lock")
+    lock.acquire()
+    try:
+      # make directories for file cache
+      if not os.path.isdir(self.data_cache_path):
+        if self.print_status: print("Making data cache directory: "+self.data_cache_path)
+        os.mkdir(self.data_cache_path)
+      if not os.path.isdir(zenodo_cache_path):
+        if self.print_status: print("  making zenodo cache directory: "+zenodo_cache_path)
+        os.mkdir(zenodo_cache_path)
+      # write to cache
+      with open(file_cache_path, "w") as f:
+        f.write(text)
+    finally:
+      lock.release()
+    # return
     return text
 
   def _fetch_zenodo_record_json(self, zenodo_id: str):
@@ -231,9 +258,7 @@ class TrypTag:
       if file["key"] == file_name:
         url = file["links"]["self"]
         if self.print_status: print("  Fetching file "+file_name+" from: "+url)
-        with urlopen(url) as response:
-           text = response.read().decode(response.info().get_param("charset") or "utf-8-sig")
-           return text
+        return self._fetch_zenodo_text(url)
 
   # function for parsing localisation annotation strings
   def _parse_localisation_annotation(self, string: str) -> list:
