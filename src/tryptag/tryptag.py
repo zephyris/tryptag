@@ -500,7 +500,7 @@ class TrypTag:
       self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"] = cells.copy()
       if self.print_status: print("  Counted", self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["fields_count"], "image data files with", sum(self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells_per_field"]), "cells for", cell_line.life_stage, cell_line.gene_id, cell_line.terminus)
 
-  def _fetch_data(self, cell_line):
+  def fetch_data(self, cell_line):
     """
     Downloads and caches microscopy data for the plate containing a `gene_id` and `terminus` combination
     Places data in `self.data_cache_path`
@@ -661,7 +661,7 @@ class TrypTag:
     :return: List of dicts of all cells for this `life_stage`, `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
     """
     # fetch data
-    self._fetch_data(cell_line)
+    self.fetch_data(cell_line)
     # return field/cell list
     fieldcell_list = []
     for field_index, cell_list in enumerate(self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"]):
@@ -757,7 +757,7 @@ class TrypTag:
     # for all life_stage/gene_id/terminus
     for life_stage in self.life_stages:
       for cell_line in self.worklist_all(life_stage):
-        self._fetch_data(cell_line)
+        self.fetch_data(cell_line)
 
   def _open_field(self, cell_line, field_index: int = 0, custom_field_image = None) -> list:
     """
@@ -769,7 +769,7 @@ class TrypTag:
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask]`.
     """
     # ensure data is fetched
-    self._fetch_data(cell_line)
+    self.fetch_data(cell_line)
     # determine base path for files
     field_base_path = os.path.join(self.data_cache_path, self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["plate"], cell_line.gene_id+"_4_"+cell_line.terminus.upper()+"_"+str(field_index + 1))
     if field_base_path != self._field_base_path_sk:
@@ -921,7 +921,7 @@ class TrypTag:
     :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask` and `phase_mask_othercells`.
     """
-    self._fetch_data(cell_line)
+    self.fetch_data(cell_line)
     cell_data = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"][field_index][cell_index]
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
@@ -1013,7 +1013,7 @@ class TrypTag:
       result = {
         "cell_line": cell_line
       }
-      current_tryptag._fetch_data(cell_line)
+      current_tryptag.fetch_data(cell_line)
       current_result = analysis_function(current_tryptag, cell_line)
       result.update({
           "result": current_result
