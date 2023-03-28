@@ -14,6 +14,17 @@ import skimage.io
 import skimage.morphology
 import skimage.transform
 
+class CellLine(NamedTuple):
+  """
+  CellLine object holding information on a cell line dataset - life cycle stage, tagged gene and tagged terminus.
+  """
+  gene_id: str
+  terminus: str
+  life_stage: str
+
+  def __str__(self):
+    return f"CellLine gene_id={self.gene_id} terminus={self.terminus} life_stage={self.life_stage} "
+
 class CellImage(NamedTuple):
   """
   CellImage object holding information on a (cropped) section of a TrypTag image containing a specific cell.
@@ -24,8 +35,7 @@ class CellImage(NamedTuple):
   phase_mask: Any
   dna_mask: Any
   phase_mask_othercells: Any
-  gene_id: str
-  terminus: str
+  cell_line: Any
   field_index: int
   cell_index: int
   rotated: bool
@@ -42,8 +52,7 @@ class FieldImage(NamedTuple):
   dna: Any
   phase_mask: Any
   dna_mask: Any
-  gene_id: str
-  terminus: str
+  cell_line: Any
   field_index: int
 
   def __str__(self):
@@ -55,11 +64,12 @@ class TrypTag:
       verbose=True,
       data_cache_path="./_tryptag_cache",
       remove_zip_files=True,
-      master_zenodo_id=6862289, # tryptag, 7258722 for targeted bsf
+      master_zenodo_id=6862289,
       data_cache_plates=222,
       data_cache_platesize=17 * float(2 << 30),
       data_cache_zipsize=14 * float(2 << 30),
-      um_per_px=6.5 / 63
+      um_per_px=6.5 / 63,
+      life_stages=["procyclic"]
   ):
     """Initialise TrypTag data access object
     
@@ -72,6 +82,7 @@ class TrypTag:
     data_cache_platesize -- Size (in bytes) of one plate directory (default chosen for TrypTag's plates, 17 Gb)
     data_cache_zipsize -- Size (in bytes) of one plate zip file (default chosen for TrypTag's plates, 14 Gb)
     um_per_px -- physical pixel size / corrected magnification
+    life_stages -- list of life cycle stages covered by this dataset, loading will default to first entry
     """
     # user setting: verbose output from accessing data
     self.print_status = verbose
@@ -106,6 +117,9 @@ class TrypTag:
     self._thresholds_sk = None
     self._channels_sk = None
 
+    # variables for handling of different data sources
+    self.life_stages = life_stages
+
   # TODO: Cache per session(?)
   def _fetch_zenodo_text(self, url: str) -> str:
     """
@@ -114,6 +128,7 @@ class TrypTag:
     :param url: Zenodo URL.
     :return: String of the contents of URL.
     """
+    # TODO: Implement caching to avoid hammering Zenodo URLs and 
     # check cache and return string
     if url in self._url_str_cache:
       return self._url_str_cache[url]
@@ -218,7 +233,8 @@ class TrypTag:
   @cached_property
   def gene_list(self) -> list:
     """
-    Master data list, organised as dicts within `gene_list[gene_id][terminus]` structure.
+    Master data list, organised as dicts within `gene_list[life_stage][gene_id][terminus]` structure.
+    `life_stage` is the life cycle stage, for tryptag always `"procyclic"`.
     `gene_id` is a TriTrypDB gene ID, eg. `"Tb927.5.3250"`.
     `terminus` is `"n"` or `"c"`.
     """
@@ -229,7 +245,9 @@ class TrypTag:
     # download localisations.tsv from master record
     zenodo_json = self._fetch_zenodo_record_json(self.zenodo_record_id)
     lines = self._fetch_zenodo_record_file(zenodo_json, "localisations.tsv").splitlines()
-    gene_list = {}
+    # load into default life stage
+    # TODO: Handle loading of multiple different life stages
+    gene_list = {self.life_stages[0]: {}}
     # parse line by line, expects the first line to be headers and grab indices
     for line in lines:
       line = line.split("\t")
@@ -239,7 +257,7 @@ class TrypTag:
           indices[line[l]] = l
       else:
         # if not the header line, grab gene data
-        gene_list[line[0]] = {}
+        gene_list[self.life_stages[0]][line[0]] = {}
         termini = ["c", "n"]
         for t in termini:
           p = t.upper() + " "
@@ -258,33 +276,39 @@ class TrypTag:
               terminus_data["signal_background"]: line[indices[p + "classified as faint"]]
             # look up zenodo id
             terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
-            gene_list[line[0]][t] = terminus_data
+            gene_list[self.life_stages[0]][line[0]][t] = terminus_data
     return gene_list
 
-  @cached_property
-  def worklist_all(self) -> list:
+  def worklist_all(self, life_stage: str = None) -> list:
     """
-    All `gene_id` and `terminus` combinations with data, as a list of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`.
+    All `gene_id` and `terminus` combinations with data, as a `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
+
+    :param life_stage: Which life cycle stage to load data from, default is first entry in `self.life_stages`.
     """
+    if life_stage is None:
+      life_stage = self.life_stages[0]
     return [
-      {
-        "gene_id": gene_id,
-        "terminus": terminus,
-      } for gene_id, terminus in
-      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in self.termini if terminus in gene_entry)
+      CellLine(
+        life_stage=life_stage,
+        gene_id=gene_id,
+        terminus=terminus,
+       ) for gene_id, terminus in
+      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list[life_stage].items() for terminus in self.termini if terminus in gene_entry)
     ]
 
-  @cached_property
-  def worklist_parental(self) -> list:
+  def worklist_parental(self, life_stage: str = None) -> list:
     """
-    All dummy `gene_id` and `terminus` combinations which correspond to parental cell line samples, as a list of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`.
+    All dummy `gene_id` and `terminus` combinations which correspond to parental cell line samples, as a `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     """
+    if life_stage is None:
+      life_stage = self.life_stages[0]
     return [
-      {
-        "gene_id": gene_id,
-        "terminus": terminus,
-      } for gene_id, terminus in
-      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list.items() for terminus in self.termini if "wild-type" in gene_id and terminus in gene_entry)
+      CellLine(
+        life_stage=life_stage,
+        gene_id=gene_id,
+        terminus=terminus,
+       ) for gene_id, terminus in
+      ((gene_id, terminus) for gene_id, gene_entry in self.gene_list[life_stage].items() for terminus in self.termini if "wild-type" in gene_id and terminus in gene_entry)
     ]
 
   @cached_property
@@ -335,12 +359,11 @@ class TrypTag:
     # load and parse to flat dict of terms with parent and children names
     return _parse_localisation_ontology(json.loads(self._fetch_zenodo_record_file(zenodo_json, "localisation_ontology.json")))
 
-  def localisation_match(self, gene_id: str, terminus: str, query_term: str, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> bool:
+  def _localisation_match(self, cell_line, query_term: str, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> bool:
     """
-    Test if the localisation annotation of `gene_id` and `terminus` in `gene_list` match the query.
+    Test if the localisation annotation of `life_stage`, `gene_id` and `terminus` in `gene_list` match the query.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :param query_term: Search query annotation term from the localisation ontology.
     :param match_subterms: Whether to also match child/subterm/substructures of `query_term`, default `True`.
     :param exclude_modifiers: List of modifier terms none of which can be matched, default `"weak"` and `"<10%"`.
@@ -348,7 +371,7 @@ class TrypTag:
     :return: Whether or not this is a localisation match.
     """
     # get query localisation
-    localisations = self.gene_list[gene_id][terminus]["loc"]
+    localisations = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["loc"]
     # get ontology, and lead to keyerror if query_term not in ontology
     ont = self.localisation_ontology[query_term]
     # iterate through each annotated localisation
@@ -384,26 +407,25 @@ class TrypTag:
     # no matches, so return false
     return False
 
-  def localisation_search(self, query_term: str, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> list:
+  def localisation_search(self, query_term: str, life_stage: str = None, match_subterms: bool = True, exclude_modifiers: list = ["weak", "<10%"], required_modifiers: list = None) -> list:
     """
     Get a worklist of `gene_id` and `terminus` hits where any of the localisation annotations match the query.
 
+    :param life_stage: Life cycle stage, default to first entry in `self.life_stages`.
     :param query_term: Search query annotation term from the localisation ontology.
     :param match_subterms: Whether to also match child/subterm/substructures of `query_term`, default `True`.
     :param exclude_modifiers: List of modifier terms none of which can be matched, default `"weak"` and `"<10%"`.
     :param required_modifiers: List of modifier terms all of which must be matched, default `None`.
-    :return: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`.
+    :return: List of `CellLine` objects of the hits, containing `life_stage`, `gene_id` and `terminus`.
     """
+    # determine life stage
+    if life_stage is None:
+      life_stage = self.life_stages[0]
     # check all against query
     hits = []
-    for gene_id in self.gene_list:
-      for terminus in self.termini:
-        if terminus in self.gene_list[gene_id]:
-          if self.localisation_match(gene_id, terminus, query_term, match_subterms=match_subterms, exclude_modifiers=exclude_modifiers, required_modifiers=required_modifiers):
-            hits.append({
-              "gene_id": gene_id,
-              "terminus": terminus
-            })
+    for cell_line in self.worklist_all(life_stage):
+      if self._localisation_match(cell_line,  query_term, match_subterms=match_subterms, exclude_modifiers=exclude_modifiers, required_modifiers=required_modifiers):
+        hits.append(cell_line)
     return hits
 
   def check_data_cache_usage(self, exact: bool = False):
@@ -414,7 +436,7 @@ class TrypTag:
     :param exact: If `True`, then calculate usage exactly. Otherwise, approximate estimate from number of directories.
     """
     if exact:
-      # full check, sum all file sizes
+      # full exact check, sum all file sizes in all directories
       str_prefix = ""
       sum_dir = 0
       sum_zip = 0
@@ -425,7 +447,7 @@ class TrypTag:
           for subfile in os.listdir(os.path.join(self.data_cache_path, file)):
             sum_dir += os.path.getsize(os.path.join(self.data_cache_path, file, subfile))
     else:
-      # quick approximation, counting directories
+      # quick approximation, count directories and multiply by expected size
       str_prefix = "~"
       sum_dir = 0
       sum_zip = 0
@@ -434,7 +456,6 @@ class TrypTag:
           sum_zip += self._data_cache_zipsize
         if os.path.isdir(os.path.join(self.data_cache_path, file)):
           sum_dir += self._data_cache_platesize
-    # full check too slow, do simplified check
     if self.print_status:
       print("Current data cache:")
       print("  Directory usage: "+str_prefix+str(round(sum_dir / float(2 << 40), 4))+" TiB")
@@ -452,19 +473,18 @@ class TrypTag:
     if free < space_required:
       if self.print_status: print("! Insufficient free disk space for full data cache: "+str(round(free / float(2 << 40), 4))+" / "+str(round(space_required / float(2 << 40), 4))+" TiB available !")
 
-  def _count_cells(self, gene_id: str, terminus: str):
+  def _count_cells(self, cell_line):
     """
-    Counts the number of fields of view and cells in them for `gene_id` `terminus` from the data cache.
+    Counts the number of fields of view and cells in them for for the requested cell_line (`terminus`, `gene_id`, `terminus`) from the data cache.
     Records the data in `self.gene_list`, as `fields_count` `int`, `cells_per_field` `list` and `cells` `list` of `list`.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     """
-    base_path = os.path.join(self.data_cache_path, self.gene_list[gene_id][terminus]["plate"])
-    if "cells" not in self.gene_list[gene_id][terminus] and os.path.isdir(base_path):
+    base_path = os.path.join(self.data_cache_path, self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["plate"])
+    if "cells" not in self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus] and os.path.isdir(base_path):
       cells = []
-      for i in range(len(glob.glob(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_*_roisCells.txt")))):
-        with open(os.path.join(base_path, gene_id+"_4_"+terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
+      for i in range(len(glob.glob(os.path.join(base_path, cell_line.gene_id+"_4_"+cell_line.terminus.upper()+"_*_roisCells.txt")))):
+        with open(os.path.join(base_path, cell_line.gene_id+"_4_"+cell_line.terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
           lines = cells_file.readlines()
           cells.append([])
           for line in lines:
@@ -475,20 +495,19 @@ class TrypTag:
               cell_data["centre"] = (float(line[3]), float(line[4]))
               cell_data["angle"] = float(line[7])
               cells[-1].append(cell_data)
-      self.gene_list[gene_id][terminus]["fields_count"] = len(cells)
-      self.gene_list[gene_id][terminus]["cells_per_field"] = [len(x) for x in cells]
-      self.gene_list[gene_id][terminus]["cells"] = cells.copy()
-      if self.print_status: print("  Counted", self.gene_list[gene_id][terminus]["fields_count"], "image data files with", sum(self.gene_list[gene_id][terminus]["cells_per_field"]), "cells for", gene_id, terminus)
+      self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["fields_count"] = len(cells)
+      self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells_per_field"] = [len(x) for x in cells]
+      self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"] = cells.copy()
+      if self.print_status: print("  Counted", self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["fields_count"], "image data files with", sum(self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells_per_field"]), "cells for", cell_line.life_stage, cell_line.gene_id, cell_line.terminus)
 
-  def fetch_data(self, gene_id: str, terminus: str) -> list:
+  def _fetch_data(self, cell_line):
     """
     Downloads and caches microscopy data for the plate containing a `gene_id` and `terminus` combination
     Places data in `self.data_cache_path`
-    Updates self.gene_list[gene_id][terminus] with information about number of fields of view and cells
+    Updates self.gene_list[life_stage][gene_id][terminus] with information about number of fields of view and cells
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
-    :return: List of dicts of all cells for this `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
+    :return: List of dicts of all cells for this `life_stage`, `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
     """
     # progress bar object for file download/unzipping
     global _progress_bar
@@ -523,57 +542,54 @@ class TrypTag:
           m.update(buffer)
       return m.hexdigest()
 
-    terminus = terminus.lower()
-    # load tryptag data, if not already
-    if terminus in self.gene_list[gene_id]:
-      # check if the data cache directory exists, and make if not
-      if not os.path.isdir(self.data_cache_path):
-        if self.print_status: print("Making data cache directory: "+self.data_cache_path)
-        os.mkdir(self.data_cache_path)
-      # target paths for zip file and data subdirectory
-      plate = self.gene_list[gene_id][terminus]["plate"]
-      zip_path = os.path.join(self.data_cache_path, plate+".zip")
-      dir_path = os.path.join(self.data_cache_path, plate)
-      ziplock_path = os.path.join(self.data_cache_path, plate+".zip.lock")
-      dirlock_path = os.path.join(self.data_cache_path, plate+".dir.lock")
-      # setup plate-specific lock for threadsafe zip download
-      lock = FileLock(ziplock_path)
-      lock.acquire()
-      # download zip
-      try:
-        if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
-          self.check_data_cache_usage()
-          print("Fetching data for gene ID "+gene_id+", tagged at "+terminus+" terminus")
-          # fetch the processed microscopy data from Zenodo
-          if self.print_status: print("  Making plate data directory for: "+plate)
-          if "record_id" not in self.zenodo_index[plate]:
-            # if not already translated, fetch the latest Zenodo ID from master Zenodo ID
-            # fetch Zenodo record JSON, to get latest version doi
-            zenodo_json = self._fetch_zenodo_record_json(self.gene_list[gene_id][terminus]["zenodo_id"])
-            self.zenodo_index[plate]["record_doi"] = zenodo_json["doi"]
-            self.zenodo_index[plate]["record_id"] = str(zenodo_json["id"])
-            for file in zenodo_json["files"]:
-              if file["key"].endswith("_processed.zip"):
-                self.zenodo_index[plate]["record_url"] = file["links"]["self"]
-                self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
-          # download data
-          zip_md5 = 0
-          zip_path_temp = os.path.join(self.data_cache_path, plate+".zip.tmp")
-          while zip_md5 != self.zenodo_index[plate]["record_md5"]:
-            if self.print_status:
-              print("  Downloading data from: "+self.zenodo_index[plate]["record_url"])
-              urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, _show_progress_bar)
-            else:
-              urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
-            if self.print_status: print("  Checking MD5 hash of: "+plate+".zip.tmp")
-            zip_md5 = _file_md5_hash(zip_path_temp)
-            if zip_md5 != self.zenodo_index[plate]["record_md5"]:
-              if self.print_status: print("! MD5 of downloaded zip is incorrect ("+zip_md5+"), retrying download !")
-          if self.print_status: print("  Download complete")
-          shutil.move(zip_path_temp, zip_path)
-          with open(zip_path+".md5", "w") as file: file.write(zip_md5)
-      finally:
-        lock.release()
+    # check if the data cache directory exists, and make if not
+    if not os.path.isdir(self.data_cache_path):
+      if self.print_status: print("Making data cache directory: "+self.data_cache_path)
+      os.mkdir(self.data_cache_path)
+    # target paths for zip file and data subdirectory
+    plate = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["plate"]
+    zip_path = os.path.join(self.data_cache_path, plate+".zip")
+    dir_path = os.path.join(self.data_cache_path, plate)
+    ziplock_path = os.path.join(self.data_cache_path, plate+".zip.lock")
+    dirlock_path = os.path.join(self.data_cache_path, plate+".dir.lock")
+    # setup plate-specific lock for threadsafe zip download
+    lock = FileLock(ziplock_path)
+    lock.acquire()
+    # download zip
+    try:
+      if not os.path.isfile(zip_path) and not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
+        self.check_data_cache_usage()
+        print("Fetching data for "+cell_line.life_stage+" form, gene ID "+cell_line.gene_id+" tagged at "+cell_line.terminus+" terminus")
+        # fetch the processed microscopy data from Zenodo
+        if self.print_status: print("  Making plate data directory for: "+plate)
+        if "record_id" not in self.zenodo_index[plate]:
+          # if not already translated, fetch the latest Zenodo ID from master Zenodo ID
+          # fetch Zenodo record JSON, to get latest version doi
+          zenodo_json = self._fetch_zenodo_record_json(self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["zenodo_id"])
+          self.zenodo_index[plate]["record_doi"] = zenodo_json["doi"]
+          self.zenodo_index[plate]["record_id"] = str(zenodo_json["id"])
+          for file in zenodo_json["files"]:
+            if file["key"].endswith("_processed.zip"):
+              self.zenodo_index[plate]["record_url"] = file["links"]["self"]
+              self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
+        # download data
+        zip_md5 = 0
+        zip_path_temp = os.path.join(self.data_cache_path, plate+".zip.tmp")
+        while zip_md5 != self.zenodo_index[plate]["record_md5"]:
+          if self.print_status:
+            print("  Downloading data from: "+self.zenodo_index[plate]["record_url"])
+            urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, _show_progress_bar)
+          else:
+            urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
+          if self.print_status: print("  Checking MD5 hash of: "+plate+".zip.tmp")
+          zip_md5 = _file_md5_hash(zip_path_temp)
+          if zip_md5 != self.zenodo_index[plate]["record_md5"]:
+            if self.print_status: print("! MD5 of downloaded zip is incorrect ("+zip_md5+"), retrying download !")
+        if self.print_status: print("  Download complete")
+        shutil.move(zip_path_temp, zip_path)
+        with open(zip_path+".md5", "w") as file: file.write(zip_md5)
+    finally:
+      lock.release()
       # setup plate-specific lock for threadsafe decompression
       lock = FileLock(dirlock_path)
       lock.acquire()
@@ -635,26 +651,35 @@ class TrypTag:
       finally:
         lock.release()
       # count fields of view and number of cells
-      self._count_cells(gene_id, terminus)
-      # return field/cell list
-      fieldcell_list = []
-      for field_index, cell_list in enumerate(self.gene_list[gene_id][terminus]["cells"]):
-        for cell_index, cell in enumerate(cell_list):
-          fieldcell_list.append({"field_index": field_index, "cell_index": cell_index})
-      return fieldcell_list
+      self._count_cells(cell_line)
 
-  def check_if_cached(self, gene_id: str, terminus: str) -> bool:
+  def cell_list(self, cell_line) -> list:
+    """
+    Returns a list fields of view and cells in them for for the requested cell_line (`terminus`, `gene_id`, `terminus`).
+
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
+    :return: List of dicts of all cells for this `life_stage`, `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
+    """
+    # fetch data
+    self._fetch_data(cell_line)
+    # return field/cell list
+    fieldcell_list = []
+    for field_index, cell_list in enumerate(self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"]):
+      for cell_index, cell in enumerate(cell_list):
+        fieldcell_list.append({"field_index": field_index, "cell_index": cell_index})
+    return fieldcell_list
+
+  def check_if_cached(self, cell_line) -> bool:
     """
     Checks if data is cached for a given `gene_id` and `terminus`
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :return: If the data is already cached
     """
     # path for data subdirectory
-    plate = self.gene_list[gene_id][terminus]["plate"]
+    plate = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["plate"]
     dir_path = os.path.join(self.data_cache_path, plate)
-    # False if MD5 not yet copied to data directory
+    # False if MD5 not yet copied to plate data directory
     if not os.path.isfile(os.path.join(dir_path, "_"+plate+".zip.md5")):
       return False
     # otherwise cached
@@ -713,16 +738,15 @@ class TrypTag:
               print("  MD5 file for zip file does not match zenodo record MD5:", plate)
       # then, check if there are images for every gene in the plate
       if os.path.isdir(dir_path):
-        # for all gene_id/terminus
-        for gene_id in self.gene_list:
-          for terminus in self.termini:
-            if terminus in self.gene_list[gene_id]:
-              if self.gene_list[gene_id][terminus]["plate"] == plate:
-                if "cells" in self.gene_list[gene_id][terminus]:
-                  # ensure cells are counted
-                  self._count_cells(gene_id, terminus)
-                  if len(self.gene_list[gene_id][terminus]["cells"]) == 0:
-                    print("  No images found, but images expected, for", gene_id, terminus, "in", plate)
+        # for all life_stage/gene_id/terminus
+        for life_stage in self.life_stages:
+          for cell_line in self.worklist_all(life_stage):
+            if self.gene_list[life_stage][cell_line.gene_id][cell_line.terminus]["plate"] == plate:
+              if "cells" in self.gene_list[life_stage][cell_line.gene_id][cell_line.terminus]:
+                # ensure cells are counted
+                self.cell_list(cell_line)
+                if len(self.gene_list[life_stage][cell_line.gene_id][cell_line.terminus]["cells"]) == 0:
+                  print("  No images found, but images expected, for", life_stage, gene_id, terminus, "in", plate)
         # restore verbose output state
     self.print_status = original_print_status
 
@@ -730,26 +754,24 @@ class TrypTag:
     """
     Fetches all microscopy data and stores it in the data cache.
     """
-    # iterate thorugh all `gene_id`` and `termini
-    for gene_id in self.gene_list:
-      for terminus in ["c", "n"]:
-        self.fetch_data(gene_id, terminus)
+    # for all life_stage/gene_id/terminus
+    for life_stage in self.life_stages:
+      for cell_line in self.worklist_all(life_stage):
+        self._fetch_data(cell_line)
 
-  def _open_field(self, gene_id: str, terminus: str, field_index: int = 0, custom_field_image = None) -> list:
+  def _open_field(self, cell_line, field_index: int = 0, custom_field_image = None) -> list:
     """
     Returns field of view image data.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
     :return: List with one `skimage` image per image channel and threshold image. List is in the order `[phase, mng, dna, phase_mask, dna_mask]`.
     """
     # ensure data is fetched
-    terminus = terminus.lower()
-    self.fetch_data(gene_id, terminus)
+    self._fetch_data(cell_line)
     # determine base path for files
-    field_base_path = os.path.join(self.data_cache_path, self.gene_list[gene_id][terminus]["plate"], gene_id+"_4_"+terminus.upper()+"_"+str(field_index + 1))
+    field_base_path = os.path.join(self.data_cache_path, self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["plate"], cell_line.gene_id+"_4_"+cell_line.terminus.upper()+"_"+str(field_index + 1))
     if field_base_path != self._field_base_path_sk:
       # if not the last path opened, open field and threshold images and store base path in self
       self._field_base_path_sk = field_base_path
@@ -787,33 +809,30 @@ class TrypTag:
         images[4] = custom_field_image.dna_mask.copy()
     return images
 
-  def open_field(self, gene_id: str, terminus: str, field_index: int = 0) -> list:
+  def open_field(self, cell_line, field_index: int = 0) -> list:
     """
     Opens a field of view from a `gene_id`, `terminus` and `field_index`.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :return: FieldImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask` and `dna_mask`.
     """
-    [phase, mng, dna, phase_mask, dna_mask] = self._open_field(gene_id, terminus, field_index)
+    [phase, mng, dna, phase_mask, dna_mask] = self._open_field(cell_line, field_index)
     return FieldImage(
       phase=phase,
       mng=mng,
       dna=dna,
       phase_mask=phase_mask,
       dna_mask=dna_mask,
-      gene_id=gene_id,
-      terminus=terminus,
+      cell_line=cell_line,
       field_index=field_index,
     )
 
-  def _open_cell(self, gene_id: str, terminus: str, field_index: int, crop_centre: tuple, fill_centre: tuple, custom_field_image = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
+  def _open_cell(self, cell_line, field_index: int, crop_centre: tuple, fill_centre: tuple, custom_field_image = None, rotate: bool = False, angle: float = 0, width: int = 323) -> list:
     """
     Returns cell image data, returning a list with one `skimage` image per image channel and threshold image.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param crop_centre: `(x, y)` tuple around which to crop. Ignored if `width <= 0`.
     :param fill_centre: `(x, y)` at which to do a flood fill to select the target cell object in phase_mask.
@@ -829,7 +848,7 @@ class TrypTag:
       return image[int(y):int(y + h), int(x):int(x + w)]
 
     # open field, passing custom images
-    channels = self._open_field(gene_id, terminus, field_index, custom_field_image = custom_field_image)
+    channels = self._open_field(cell_line, field_index, custom_field_image = custom_field_image)
     # process phase threshold image to split cell of interest from neighbouring cells, nb. xy swapped in skimage arrays
     # replace existing mask pixels with value 127
     channels[3][channels[3] == 255] = 127
@@ -890,48 +909,46 @@ class TrypTag:
   # open a cell, cropped from a field of view
   # uses the phase and dna threshold images from tryptag
   # cell x, y coordinate in phase threshold from tryptag
-  def open_cell(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = 0, width: int = 323, rotate: bool = False) -> list:
+  def open_cell(self, cell_line, field_index: int = 0, cell_index: int = 0, width: int = 323, rotate: bool = False) -> list:
     """
     Opens a cell from a `gene_id`, `terminus`, `field_index` and `cell_index`.
     Use `open_cell_custom` if you would like to inject custom images, coordinates and/or angle.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param cell_index: Index of the cell in the field of view. If not set, then `0`.
     :param width: If positive, width of cropped cell image (may clip very large cells). If negative, padding for crop around the `phase_mask`. Default, `323`.
     :param rotate: Whether or not to rotate the cell. Default `False`. Set to `False` if `width < 0` (padded crop mode).
     :return: CellImage object, containing the image channels as attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask` and `phase_mask_othercells`.
     """
-    self.fetch_data(gene_id, terminus)
-    cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
+    self._fetch_data(cell_line)
+    cell_data = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"][field_index][cell_index]
     crop_centre = cell_data["centre"]
     fill_centre = cell_data["wand"]
     angle = cell_data["angle"]
+    print(cell_data)
     if width < 0:
       rotate = False
-    phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
+    phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells = self._open_cell(cell_line, field_index, crop_centre, fill_centre, angle = angle, rotate = rotate, width = width)
     return CellImage(
+      phase=phase,
       mng=mng,
       dna=dna,
       phase_mask=phase_mask,
       dna_mask=dna_mask,
       phase_mask_othercells=phase_mask_othercells,
-      gene_id=gene_id,
-      terminus=terminus,
+      cell_line=cell_line,
       field_index=field_index,
       cell_index=cell_index,
       rotated=rotate,
-      phase=phase,
     )
 
-  def open_cell_custom(self, gene_id: str, terminus: str, field_index: int = 0, cell_index: int = None, custom_field_image = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
+  def open_cell_custom(self, cell_line, field_index: int = 0, cell_index: int = None, custom_field_image = None, fill_centre: tuple = None, crop_centre: tuple = None, rotate: bool = False, angle: float = None, width: int = 323) -> list:
     """
     Advanced customisable open cell, opens a cell from a `gene_id`, `terminus` and `field_index`, but with customisable images, cell coordinates and/or angle.
     This allows use of custom pth image and cell coordinates, default cell coordinates but prefiltered mng image, etc.
 
-    :param gene_id: Gene ID.
-    :param terminus: Tagged terminus, `"n"` or `"c"`.
+    :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :param field_index: Index of the field of view. If not set, then `0`.
     :param cell_index: Index of the cell in the field of view, used for finding default `fill_centre` and `crop_centre` coordinates. If not set or `None`, then use `fill_centre` coordinate.
     :param custom_field_image: `FieldImage` object containing custom field images to use. Images can be skimage image or `None`. Entries of None will use tryptag default. If not set or `None`, then use all tryptag defaults.
@@ -944,7 +961,7 @@ class TrypTag:
     """
     # if cell_index is set, then use tryptag defaults unless overridden
     if cell_index is not None:
-      cell_data = self.gene_list[gene_id][terminus]["cells"][field_index][cell_index]
+      cell_data = self.gene_list[cell_line.life_stage][cell_line.gene_id][cell_line.terminus]["cells"][field_index][cell_index]
       if crop_centre is None:
         crop_centre = cell_data["centre"]
       if fill_centre is None:
@@ -960,7 +977,7 @@ class TrypTag:
         crop_centre = fill_centre
     if width < 0:
       rotate = False
-    [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(gene_id, terminus, field_index, crop_centre, fill_centre, custom_field_image, angle = angle, rotate = rotate, width = width)
+    [phase, mng, dna, phase_mask, dna_mask, phase_mask_othercells] = self._open_cell(cell_line, field_index, crop_centre, fill_centre, custom_field_image, angle = angle, rotate = rotate, width = width)
     return CellImage(
       phase=phase,
       mng=mng,
@@ -968,8 +985,7 @@ class TrypTag:
       phase_mask=phase_mask,
       dna_mask=dna_mask,
       phase_mask_othercells=phase_mask_othercells,
-      gene_id=gene_id,
-      terminus=terminus,
+      cell_line=cell_line,
       field_index=field_index,
       cell_index=None,
       rotated=rotate,
@@ -979,11 +995,11 @@ class TrypTag:
     """
     Worker for multiprocess/thread parallel analysis of a `work_list`.
 
-    :param work_list: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`, defining each `gene_id` and `terminus` combination to analyse.
-    :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly three arguments, `tryptag`, `gene_id` and `terminus` in this order.
+    :param work_list: List of `CellLine` objects defining each `life_stage`, `gene_id` and `terminus` combination to analyse.
+    :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly two arguments, `tryptag` (`TrypTag` instance) and `cell_line` (`CellLine` object) in this order.
     :param tryptag: `TrypTag` instance, copied for use by this spawned thread/process. If `None`, then do not copy and use `self`.
     :param worker_index: Index of current worker.
-    :return: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`.
+    :return: List of dicts in the form `{"life_stage": life_stage, "gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`.
     """
     # if passed a TrypTag instance then use a copy (for running as a spawned thread/process), otherwise use self as current_tryptag
     if tryptag is None:
@@ -992,15 +1008,13 @@ class TrypTag:
       from copy import deepcopy
       current_tryptag = deepcopy(tryptag)
     results = []
-    for i in range(len(work_list)):
-      entry = work_list[i]
-      if self.print_status and worker_index is not None: print("  Worker index", worker_index + 1, "processing worklist entry", i + 1, "of", len(work_list))
+    for cell_line_index, cell_line in enumerate(work_list):
+      if self.print_status and worker_index is not None: print("  Worker index", worker_index + 1, "processing worklist entry", cell_line_index + 1, "of", len(work_list))
       result = {
-        "gene_id": entry["gene_id"],
-        "terminus": entry["terminus"]
+        "cell_line": cell_line
       }
-      current_tryptag.fetch_data(entry["gene_id"], entry["terminus"])
-      current_result = analysis_function(current_tryptag, entry["gene_id"], entry["terminus"])
+      current_tryptag._fetch_data(cell_line)
+      current_result = analysis_function(current_tryptag, cell_line)
       result.update({
           "result": current_result
       })
@@ -1011,11 +1025,11 @@ class TrypTag:
     """
     Simple handler for parallel analysis of a `work_list`.
 
-    :param work_list: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus}`, defining each `gene_id` and `terminus` combination to analyse.
-    :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly three arguments, `tryptag`, `gene_id` and `terminus` in this order.
+    :param work_list: List of CellLine objects, defining each `life_stage, `gene_id` and `terminus` combination to analyse.
+    :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly two arguments, `tryptag` (`TrypTag` instance) and `cell_line` (`CellLine` object) in this order.
     :param workers: Number of threads/processes to spawn, default is number of CPUs.
     :param multiprocess_mode: `"process"` for parallel processes, `"thread"` for parallel threads or `None` for no parallel processing (directly calls `analysis_function`).
-    :return: List of dicts in the form `{"gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`. These may be in a different order to `work_list`.
+    :return: List of dicts in the form `{"life_stage": life_stage, "gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`. These may be in a different order to `work_list`.
     """
     import concurrent.futures
     import multiprocessing
@@ -1065,4 +1079,4 @@ class BSFTag(TrypTag):
   def __init__(self, *args, **kwargs):
     if 'master_zenodo_id' in kwargs:
       raise ValueError('`master_zenodo_id` is not a valid argument')
-    super().__init__(self, *args, **kwargs, master_zenodo_id=7258722)
+    super().__init__(self, *args, **kwargs, master_zenodo_id=7258722, data_cache_plates=4, life_stages=["bloodstream"])

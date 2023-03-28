@@ -3,12 +3,16 @@ import scipy
 import skimage
 import math
 
-# fluorescent signal (from mng) within the cell masked region (pth)
-# median background corrected signal
-# returns a dict of signal statistics
-def cell_signal_analysis(pth, mng):
-  mng = mng - numpy.median(mng)
-  lab = skimage.measure.label(pth)
+def cell_signal_analysis(cell_image) -> dict:
+  """
+  Simple `mng` signal intensity within a cell using `phase_mask`.
+  Statistics from median background-corrected `mng` signal.
+
+  :param cell_image: `CellImage` object.
+  :return: A dict of cell `mng` signal information.
+  """
+  mng = cell_image.mng - numpy.median(cell_image.mng)
+  lab = skimage.measure.label(cell_image.phase_mask)
   props_table = skimage.measure.regionprops_table(lab, mng, properties=("area", "intensity_max", "intensity_mean"))
   return {
     "cell_area": props_table["area"][0],
@@ -17,10 +21,15 @@ def cell_signal_analysis(pth, mng):
     "mng_max": props_table["intensity_max"][0]
   }
 
-# skeleton of a mask image (thr)
-# branches shorter than prune_length pixels are removed
-# returns a numpy ndarray/skimage of the skeleton
 def _mask_pruned_skeleton(thr, prefilter_radius, prune_length):
+  """
+  Skeletonisation with prefilter and pruning.
+
+  :param cell_image: An `skimage` image / `numpy` `ndarray` of the mask for skeletonisation.
+  :param prefilter_radius: Gaussian blur radius for pre-filtering.
+  :param prune_length: Shortest branch length to retain, will remove the entire skeleton if a single line shorter than this.
+  :return: An `skimage` image / `numpy` `ndarray` of the skeleton.
+  """
   # pre-filter with gaussian blur
   thr_fil = skimage.filters.gaussian(thr, sigma=prefilter_radius) > 0.5
   # make skeleton
@@ -66,16 +75,21 @@ def _mask_pruned_skeleton(thr, prefilter_radius, prune_length):
   skeleton = skimage.morphology.medial_axis(skeleton, return_distance=False).astype(numpy.uint8)
   return skeleton
 
-# dna particle analysis (from dna) within objects (dna)
-# median background corrected dna signal
-# returns a dict of count_kn, objects_k and objects_n
-#   the latter include centroid, area and sum_dna signal
-def cell_kn_analysis(pth, dth, dna, min_area=17, kn_threshold_area=250):
+def cell_kn_analysis(cell_image, min_area=17, kn_threshold_area=250):
+  """
+  Classifies and measures DNA signal in a trypanosome kinetoplast and nucleus from `phase_mask`, `dna_mask` and `dna` images.
+  Returns centroid, area, sum median background-corrected `dna` signal.
+  Gives particularly informative anterior-posterior morphometry when a clean midline is found.
+  Largely based on: doi:10.1186/1741-7007-10-1
+
+  :param cell_image: `CellImage` object.
+  :return: A dict of cell K/N information.
+  """
   # background correct dna using median
-  dna = dna - numpy.median(dna)
+  dna = cell_image.dna - numpy.median(cell_image.dna)
   # label objects and measure signal intensity and location
-  dna_lab = skimage.measure.label(dth)
-  pth_props_table = skimage.measure.regionprops_table(dna_lab, pth, properties=("intensity_max", "area_convex"))
+  dna_lab = skimage.measure.label(cell_image.dna_mask)
+  pth_props_table = skimage.measure.regionprops_table(dna_lab, cell_image.phase_mask, properties=("intensity_max", "area_convex"))
   dna_props_table = skimage.measure.regionprops_table(dna_lab, dna, properties=("intensity_mean", "intensity_max", "centroid_weighted"))
   dna_objects = []
   # filter dna objects
@@ -116,9 +130,14 @@ def cell_kn_analysis(pth, dth, dna, min_area=17, kn_threshold_area=250):
     "objects_n": [x for x in dna_objects if x["type"] == "n"]
   }
 
-# cell midline, from pth
-def cell_midline_analysis(pth, prefilter_radius=2, min_length_pruning=15):
-  pth_skeleton = _mask_pruned_skeleton(pth, prefilter_radius, min_length_pruning) # MAGIC NUMBERS: Radius for prefiltering, length for pruning branches
+def cell_midline_analysis(cell_image, prefilter_radius=2, min_length_pruning=15):
+  """
+  Analyse a trypanosome cell shape from `phase_mask` by skeletonisation.
+
+  :param cell_image: `CellImage` object.
+  :return: A dict of cell skeleton information.
+  """
+  pth_skeleton = _mask_pruned_skeleton(cell_image.phase_mask, prefilter_radius, min_length_pruning) # MAGIC NUMBERS: Radius for prefiltering, length for pruning branches
   neighbours = scipy.ndimage.convolve(pth_skeleton, [[1, 1, 1], [1, 0, 1], [1, 1, 1]]) * pth_skeleton
   termini_count = numpy.count_nonzero(neighbours == 1)
   midline_count = numpy.count_nonzero(neighbours == 2)
@@ -159,11 +178,18 @@ def cell_midline_analysis(pth, prefilter_radius=2, min_length_pruning=15):
     })
   return morphology
 
-# overall cell morphology, from pth, dth and dna
-# only gives really useful data when skeletonisation gives a single line
-def cell_morphology_analysis(pth, dth, dna):
-  midline_analysis = cell_midline_analysis(pth)
-  kn_analysis = cell_kn_analysis(pth, dth, dna)
+def cell_morphology_analysis(cell_image) -> dict:
+  """
+  Analyses a trypanosome cell morphology from `phase_mask`, `dna_mask` and `dna` images.
+  Combines `cell_midline_analysis` and `kn_analysis` to give a morphometric analysis.
+  Gives particularly informative anterior-posterior morphometry when a clean midline is found.
+  Largely based on: doi:10.1186/1741-7007-10-1
+
+  :param cell_image: `CellImage` object.
+  :return: A dict of cell morphology information.
+  """
+  midline_analysis = cell_midline_analysis(cell_image)
+  kn_analysis = cell_kn_analysis(cell_image)
   dna_objects = kn_analysis["objects_k"] + kn_analysis["objects_n"]
   # get k/n positions along midline, if a single midline identified in midline_analysis
   if "midline" in midline_analysis:
