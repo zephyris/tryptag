@@ -482,6 +482,23 @@ class TrypTag:
         hits.append(cell_line)
     return hits
 
+  def gene_id_search(self, gene_id_list: list, life_stage: str = None) -> list:
+    """
+    Use a list of gene ids to build a worklist of all tagged termini for that gene.
+
+    :param gene_id_list: List of strings which are gene IDs to search for.
+    :param query_term: Search query annotation term from the localisation ontology.
+    """
+    # determine life stage
+    if life_stage is None:
+      life_stage = self.life_stages[0]
+    # build list
+    hits = []
+    for cell_line in self.worklist_all(life_stage):
+      if cell_line.gene_id in gene_id_list:
+        hits.append(cell_line)
+    return hits
+
   def check_data_cache_usage(self, exact: bool = False):
     """
     Check disk usage of the data cache vs. free space.
