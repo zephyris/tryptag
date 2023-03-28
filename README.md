@@ -31,7 +31,7 @@ It can be accessed using instances of `CellLine`, a simple class defining cell l
 
 ```python
 from tryptag import CellLine
-cell_line = CellLine(life_stage="procyclic", gene_id="Tb927.9.8570", terminus="n")
+cell_line = CellLine("Tb927.9.8570", "n")
 field_index = 2
 field_image = tryptag.open_field(cell_line, field_index)
 ```
@@ -67,76 +67,108 @@ for field_index in range(7):
         print("Field not found, field_index:", field_index)
 ```
 
-You can access the `tryptag.gene_list` dict for more intelligent iteration. To iterate through all cells for all gene ids and termini that exist, ie. automated analysis of the entire ~5,000,000 cell dataset:
-
-```python
-termini = ["n", "c"]
-for gene_id in tryptag.gene_list:
-    for terminus in termini:
-        if terminus in tryptag.gene_list[gene_id]:
-            tryptag.fetch_data(gene_id, terminus)
-            for field in range(len(tryptag.gene_list[gene_id][terminus]["cells"])):
-                for cell in range(len(tryptag.gene_list[gene_id][terminus]["cells"][field])):
-                    [pha, mng, dna, pth, dth] = tryptag.open_cell(gene_id, terminus, field, cell)
-                    # do your analysis here
-```
-
 ## Full guide
 
-### Localisation
+### Localisation searches
 
-```
-
-### Microscopy data
-You can use `tryptag` to download the microscopy data. In python, import the module and set up a `TrypTag` instance:
+`tryptag` understands the localisation annotation ontology and provides a tool for intelligent localisation searches. First setup `tryptag`:
 
 ```python
 from tryptag import TrypTag
 tryptag = TrypTag()
 ```
 
-You can fetch the data for a specific gene id and tagging terminus using `fetch_data`.
-This looks up in which tagging plate correspond to the most recent replicate of this tagging, and the url at which to find this data.
-It then downloads and decompresses the data to the `data_cache_path` directory.
-
-This will take a long time, to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~10 to 20 Gb.
+You can search by any of the localisation annotation terms:
 
 ```python
-tryptag.fetch_data("Tb927.7.1920", "n")
+results = tryptag.localisation_search("nucleoplasm")
 ```
 
-This will give a `KeyError` error if there is no data for that terminus. To fetch, for example, image data for a list of gene ids of interest, you could use:
-
-```python
-gene_ids = ["Tb927.7.1920", "Tb927.1.2670", "Tb927.11.1150"]
-termini = ["n", "c"]
-for gene_id in gene_ids: 
-    if gene_id in tryptag.gene_list:
-        for terminus in termini:
-            if terminus in tryptag.gene_list[gene_id]:
-                tryptag.fetch_data(gene_id, terminus)
-```
-
-Look through the data cache directory and you will find the microscopy data, in one subdirectory per tagging plate and named by gene id and tagging terminus.
+This returns a list of `CellLine` objects including gene id and terminus, which you can access using dot notation: `cell_line.gene_id`, `.terminus`.
 
 ### Image analysis
 
 The primary intended use of the `tryptag` module is for easy access of specific field of view and cell images for automated image analysis. See quickstart.
 
-Microscopy data is in three image channels and two thresholded images:
+`open_field` and `open_cell` return a `FieldImage` or `CellImage` object containing these images which can be accessed using the appropriate dot notation. Microscopy data is in three image channels and two thresholded images:
 
 Image channels:
 
-1. Phase contrast (transmitted light, overall cell morphology) uint16
-2. mNG fluorescence (green fluorescence, from the tagged protein) uint32
-3. DNA stain fluorescence (blue fluorescence, using Hoechst 33342) uint16
+1. `.phase` Phase contrast (transmitted light, overall cell morphology) uint16
+2. `.mng` mNG fluorescence (green fluorescence, from the tagged protein) uint32
+3. `.dna` DNA stain fluorescence (blue fluorescence, using Hoechst 33342) uint16
 
 Thresholded images:
 
-1. Thresholded phase contrast (cells) uint8, 255 = object
-2. Thresholded DNA stain (nuclei and kinetoplasts - mitochondrial DNA organelles) uint8, 255 = object
+1. `.phase_mask` Thresholded phase contrast (cells) uint8, 255 = object, current cell of interest
+2. `.dna_mask`Thresholded DNA stain (nuclei and kinetoplasts - mitochondrial DNA organelles) uint8, 255 = object, kinetoplasts or nuclei
 
-`open_field` and `open_cell` both return an array of images in this order.
+`CellImage` objects additionally contain `.phase_mask_othercells` which is a mask of every _other_ cell in the view.
+
+### Image analysis
+
+`tryptag` includes `tryptools` which provides some useful tools for image analysis of _Trypanosoma brucei_ cells. First import `TrypTag` and `tryptools` and set up `tryptag`.
+
+```python
+from tryptag import TrypTag, tryptools
+tryptag = TrypTag()
+```
+
+The `tryptools` methods take a `CellImage` object as an input and return various automated image analysis data.
+
+```python
+cell_image = tryptag.open_cell(CellLine(life_stage="procyclic", gene_id="Tb927.9.8570", terminus="n"))
+morphology_result = tryptools.cell_morphometry_analysis(cell_image)
+```
+
+### High throughput
+
+`tryptag` makes it easy to apply an analysis to many cell lines. First import and set up `tryptag`:
+
+```python
+from tryptag import TrypTag, tryptools
+tryptag = TrypTag()
+```
+
+Define your analysis function you'd like to apply to each cell line. This example analyses mNG signal in each individual cell:
+
+```python
+def analysis_function(tryptag, cell_line):
+    result = []
+    fieldcell_list = tryptag.cell_list(cell_line)
+    for entry in fieldcell_list:
+        tryptools.cell_signal_analysis(tryptag.open_cell(cell_line, entry["field_index"], entry["cell_index"]))
+    return result
+```
+
+Run the analysis using the built-in multiprocess analysis tool. This example applies this function to _all_ cell lines. Automated iteration through the entire ~5,000,000 cell dataset:
+
+```python
+worklist = tryptag.worklist_all()
+results = tryptag.analyse_list(worklist, analysis_function)
+```
+
+You can also use the output of `tryptag.localisation_search` for `worklist`, or `tryptag.worklist_parental` for data from untagged parental cells.
+
+### Microscopy data
+You can use `tryptag` to download the microscopy data. In python, import the module and set up a `TrypTag` instance:
+
+```python
+from tryptag import TrypTag, CellLine
+tryptag = TrypTag()
+```
+
+You can trigger download of microscopy data for a specific gene id and tagging terminus using `fetch_data`.
+This looks up in which tagging plate correspond to the most recent replicate of this life cycle stage, gene ID and terminus tagging attempt, and the URL at which to find this data.
+It then downloads and decompresses the data to the `data_cache_path` directory.
+
+```python
+tryptag.fetch_data(CellLine(life_stage="procyclic", gene_id="Tb927.7.1920", terminus="n"))
+```
+
+This will take a long time; to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~10 to 20 Gb.
+
+Look through the data cache directory and you will find the microscopy data, in one subdirectory per tagging plate and named by gene id and tagging terminus.
 
 ### General tips
 
