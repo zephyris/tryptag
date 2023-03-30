@@ -1,1 +1,1 @@
-from .tryptag import TrypTag, FieldImage, CellImage, CellLine
+from .tryptag import TrypTag, BSFTag, FieldImage, CellImage, CellLine

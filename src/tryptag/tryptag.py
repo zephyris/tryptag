@@ -1179,4 +1179,4 @@ class BSFTag(TrypTag):
   def __init__(self, *args, **kwargs):
     if 'master_zenodo_id' in kwargs:
       raise ValueError('`master_zenodo_id` is not a valid argument')
-    super().__init__(self, *args, **kwargs, master_zenodo_id=7258722, data_cache_plates=4, life_stages=["bloodstream"])
+    super().__init__(self, *args, **kwargs, master_zenodo_id=7258722, data_cache_path="./_bsftag_cache", data_cache_plates=4, life_stages=["bloodstream"])
