@@ -185,7 +185,6 @@ class TrypTag:
     :return: String of the contents of URL.
     """
     # check memory cache and return string if in memory
-    print(url)
     if url in self._url_str_cache:
       if self.print_status: print("  Using memory cache")
       return self._url_str_cache[url]
