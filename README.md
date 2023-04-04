@@ -86,7 +86,7 @@ results = tryptag.localisation_search("nucleoplasm")
 
 This returns a list of `CellLine` objects including gene id and terminus, which you can access using dot notation: `cell_line.gene_id`, `.terminus`.
 
-### Image analysis
+### Opening images
 
 The primary intended use of the `tryptag` module is for easy access of specific field of view and cell images for automated image analysis. See quickstart.
 
@@ -151,6 +151,7 @@ results = tryptag.analyse_list(worklist, analysis_function)
 You can also use the output of `tryptag.localisation_search` for `worklist`, or `tryptag.worklist_parental` for data from untagged parental cells.
 
 ### Microscopy data
+
 You can use `tryptag` to download the microscopy data. In python, import the module and set up a `TrypTag` instance:
 
 ```python
