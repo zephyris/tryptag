@@ -223,7 +223,7 @@ def cell_morphology_analysis(cell_image) -> dict:
         midline_analysis["midline"].reverse()
         # recalculate midline indexes
         for object in dna_objects:
-          object["midline_index"] = len(midline_analysis["midline"]) - object["midline_index"]
+          object["midline_index"] = len(midline_analysis["midline"]) - object["midline_index"] - 1
         # reverse DNA objects
         dna_objects.reverse()
         kn_analysis["objects_k"].reverse()
