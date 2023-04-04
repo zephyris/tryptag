@@ -195,7 +195,7 @@ def cell_morphology_analysis(cell_image) -> dict:
   if "midline" in midline_analysis:
     # determine nearest midline point to dna centroid, ie. position along midline, and sort
     for object in dna_objects:
-      object["midline_index"] = scipy.spatial.distance.cdist([[object["centroid"]["y"], object["centroid"]["x"]]], midline_analysis["midline"]).argmin()
+      object["midline_index"] = scipy.spatial.distance.cdist([[object["centroid"]["x"], object["centroid"]["y"]]], midline_analysis["midline"]).argmin()
     dna_objects.sort(key=lambda x: x["midline_index"])
     # split back to kinetoplast and nucleus, update kn_analysis
     kn_analysis.update({
@@ -204,20 +204,30 @@ def cell_morphology_analysis(cell_image) -> dict:
     })
     # if at least one kinetoplast, orient cell with anterior at the most terminus-proximal kinetoplast
     if len(kn_analysis["objects_k"]) > 0:
-      # check positions of kinetoplasts along cell midline from both ends
-      min_k_1 = len(midline_analysis["midline"])
-      min_k_2 = len(midline_analysis["midline"])
-      for object in dna_objects:
-        if object["type"] == "k":
-          if object["midline_index"] < min_k_1:
-            min_k_1 = object["midline_index"]
-          if len(midline_analysis["midline"]) - object["midline_index"] < min_k_2:
-            min_k_2 = len(midline_analysis["midline"]) - object["midline_index"]
-      # if a kinetoplast closer to the end than the start of the midline, then reverse midline
-      if min_k_2 < min_k_1:
+      # check orientation using position of kinetoplasts along cell midline from both ends
+      is_reversed = False
+      min_k_offs = len(midline_analysis["midline"])
+      for object in kn_analysis["objects_k"]:
+        k_offs_1 = object["midline_index"]
+        k_offs_2 = len(midline_analysis["midline"]) - object["midline_index"]
+        # if closest k to cell end, so far
+        if k_offs_1 < min_k_offs or k_offs_2 < min_k_offs:
+          # if closest to end (rather than start) of midline, then reversed
+          if k_offs_2 < k_offs_1:
+            is_reversed = True
+            min_k_offs = k_offs_2
+          else:
+            min_k_offs = k_offs_1
+      if is_reversed == True:
+        # reverse midline
         midline_analysis["midline"].reverse()
+        # recalculate midline indexes
         for object in dna_objects:
           object["midline_index"] = len(midline_analysis["midline"]) - object["midline_index"]
+        # reverse DNA objects
+        dna_objects.reverse()
+        kn_analysis["objects_k"].reverse()
+        kn_analysis["objects_n"].reverse()
       # add cell anterior and posterior coordinates to morphology object
       midline_analysis.update({
         "anterior": midline_analysis["midline"][0],
