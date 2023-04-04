@@ -252,3 +252,38 @@ def cell_morphology_analysis(cell_image) -> dict:
       })
   midline_analysis.update(kn_analysis)
   return midline_analysis
+
+def plot_morphology_analysis(cell_image, result):
+  """
+  Makes a `matplotlib` `pyplot` summarising morphometric analysis from `cell_kn_analysis`, `cell_midline_analysis` or `cell_morphology_analysis`.
+  The returned `pyplot` object can be displayed with `.show()` method, saved with `.savefig()`, etc.
+
+  :param cell_image: `CellImage` object.
+  :param result: Dict result from `cell_kn_analysis`, `cell_midline_analysis` or `cell_morphology_analysis`.
+  :return: A `matplotlib` `pyplot` object.
+  """
+  from skimage import data, io
+  from matplotlib import cm
+  from matplotlib import pyplot as plt
+  # use the dna image masked with phase_mask and transparently masked with dna_mask as the background
+  im = plt.imshow(cell_image.dna * (cell_image.phase_mask / 255) * (0.5 + (cell_image.dna_mask / 512)), cmap=cm.gray)
+  # kinetoplast positions (cyan)
+  if "objects_k" in result:
+    plt.scatter([a["centroid"]["y"] for a in result["objects_k"]], [a["centroid"]["x"] for a in result["objects_k"]], s=40, marker="o", color=(0.0, 0.4, 0.8, 0.5))
+  # nucleus positions (green)
+  if "objects_n" in result:
+    plt.scatter([a["centroid"]["y"] for a in result["objects_n"]], [a["centroid"]["x"] for a in result["objects_n"]], s=40, marker="o", color=(0.0, 0.8, 0.4, 0.5))
+  # cell midline (gray)
+  if "midline" in result:
+    plt.plot([a[1] for a in result["midline"]], [a[0] for a in result["midline"]], color=(0.8, 0.8, 0.8, 0.2))
+  # anterior and posterior points (magenta, yellow)
+  if "anterior" in result:
+    plt.scatter([result["anterior"][1]], [result["anterior"][0]], s=10, marker="o", color=(1.0, 1.0, 0.0, 0.5))
+    plt.scatter([result["posterior"][1]], [result["posterior"][0]], s=10, marker="o", color=(1.0, 0.0, 1.0, 0.5))
+  # nearest point on midline to centroid of kinetoplasts and nuclei (dark blue, green)
+  if "midline" in result:
+    if "objects_k" in result:
+      plt.scatter([result["midline"][a["midline_index"]][1] for a in result["objects_k"]], [result["midline"][a["midline_index"]][0] for a in result["objects_k"]], s=10, marker="o", color=(0.0, 0.0, 0.8, 0.8))
+    if "objects_n" in result:
+      plt.scatter([result["midline"][a["midline_index"]][1] for a in result["objects_n"]], [result["midline"][a["midline_index"]][0] for a in result["objects_n"]], s=10, marker="o", color=(0.0, 0.8, 0.0, 0.8))
+  return plt
