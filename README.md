@@ -3,10 +3,30 @@
 Its primary intended use is for easy access to image data for automated image analysis.
 
 ## Installation
-Install using `pip`. This requires `git` to be installed:
+First, make sure `python`, `git` and `pip` are installed, on linux/mac:
+
+```shell
+sudo apt install python3 python3-pip git
+```
+
+Or, on windows:
+
+```bash
+winget install Python.Python.3.0; winget install Git.Git
+python3 -m pip install -update pip
+```
+
+Next, install `tryptag` using `pip`. This requires `git`:
 
 ```shell
 pip install git+https://github.com/zephyris/tryptag
+```
+
+`tryptag` requires several python modules: `numpy` `scikit-image`, `progressbar2` and `filelock`. These are automatically installed when using `pip`.
+
+To reinstall and upgrade use `pip`:
+```shell
+pip install --upgrade --force-reinstall git+https://github.com/zephyris/tryptag
 ```
 
 To uninstall also use `pip`:
@@ -14,8 +34,6 @@ To uninstall also use `pip`:
 ```shell
 pip uninstall tryptag
 ```
-
-`tryptag` requires several python modules: `numpy` `scikit-image`, `progressbar2` and `filelock`. These are automatically installed when using `pip`.
 
 ## Quickstart guide
 
