@@ -620,7 +620,7 @@ class TrypTag:
         _progress_bar = tqdm(total=total_size)
       downloaded = block_num * block_size
       if downloaded < total_size:
-        _progress_bar.update(downloaded)
+        _progress_bar.update(downloaded - self.n)
       else:
         _progress_bar.close()
         _progress_bar = None
