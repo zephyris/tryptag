@@ -115,6 +115,11 @@ class FieldImage():
     string += " " + " ".join([str(x) for x in ["field_index =", self.field_index]])
     return string
 
+class _tqdmDownload(tqdm):
+  def urllib_callback(self, transferred_blocks, block_size, total_size):
+    self.total = total_size
+    return self.update(transferred_blocks * block_size - self.n)
+
 class TrypTag:
   def __init__(
       self,
@@ -607,23 +612,6 @@ class TrypTag:
     :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :return: List of dicts of all cells for this `life_stage`, `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
     """
-    # progress bar object for file download/unzipping
-    global _progress_bar
-    _progress_bar = None
-
-    def _show_progress_bar(block_num: int, block_size: int, total_size: int):
-      """
-      Progress bar handler for file download and zip decompression.
-      """
-      global _progress_bar
-      if _progress_bar is None:
-        _progress_bar = tqdm(total=total_size)
-      downloaded = block_num * block_size
-      if downloaded < total_size:
-        _progress_bar.update(downloaded - self.n)
-      else:
-        _progress_bar.close()
-        _progress_bar = None
 
     def _file_md5_hash(path: str, blocksize:int = 2**20) -> str:
       """
@@ -675,7 +663,8 @@ class TrypTag:
         while zip_md5 != self.zenodo_index[plate]["record_md5"]:
           if self.print_status:
             print("  Downloading data from: "+self.zenodo_index[plate]["record_url"])
-            urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, _show_progress_bar)
+            with _tqdmDownload(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=plate) as progress:
+              urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, progress.urllib_callback)
           else:
             urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
           if self.print_status: print("  Checking MD5 hash of: "+plate+".zip.tmp")
@@ -699,14 +688,10 @@ class TrypTag:
           try:
             with ZipFile(zip_path) as archive:
               suffix = "_roisCells.txt"
-              count_checked = 0
-              total_names = len(archive.namelist())
               count_decompressed = 0
               missing = []
               # do decompression
-              for file in archive.namelist():
-                count_checked += 1
-                if self.print_status: _show_progress_bar(count_checked, 1, total_names)
+              for file in tqdm(archive.namelist(), unit=' files', miniters=1, desc=plate, disable=not self.print_status, smoothing=0):
                 # loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
                 if file.endswith(suffix) and not (os.path.split(file)[-1].startswith("control") or os.path.split(file)[-1].startswith("ontrol") or os.path.split(file)[-1].startswith("Control")):
                   source_path = os.path.split(file)
