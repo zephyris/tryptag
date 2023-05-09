@@ -8,7 +8,7 @@ from zipfile import ZipFile, BadZipFile
 from typing import NamedTuple, Any, Callable
 
 import numpy
-import progressbar
+from tqdm.auto import tqdm
 from filelock import FileLock
 import skimage.io
 import skimage.morphology
@@ -617,13 +617,12 @@ class TrypTag:
       """
       global _progress_bar
       if _progress_bar is None:
-        _progress_bar = progressbar.ProgressBar(maxval=total_size)
-        _progress_bar.start()
+        _progress_bar = tqdm(total=total_size)
       downloaded = block_num * block_size
       if downloaded < total_size:
         _progress_bar.update(downloaded)
       else:
-        _progress_bar.finish()
+        _progress_bar.close()
         _progress_bar = None
 
     def _file_md5_hash(path: str, blocksize:int = 2**20) -> str:
@@ -1160,9 +1159,7 @@ class TrypTag:
     self.gene_list
     with Executor(workers) as executor:
       futures = [executor.submit(self._list_analysis_worker, cell_line=cell_line, analysis_function=analysis_function, threading_mode=multiprocess_mode=="thread") for cell_line in dedup_work_list]
-      progress = progressbar.ProgressBar(max_value=len(futures))
-      progress.update(0) # Force drawing of the progress bar
-      results = [future.result() for future in progress(concurrent.futures.as_completed(futures))]
+      results = [future.result() for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), smoothing=0)]
     return results
 
 class BSFTag(TrypTag):
