@@ -8,7 +8,7 @@ from zipfile import ZipFile, BadZipFile
 from typing import NamedTuple, Any, Callable
 
 import numpy
-import progressbar
+from tqdm.auto import tqdm
 from filelock import FileLock
 import skimage.io
 import skimage.morphology
@@ -33,6 +33,9 @@ class CellLine:
 
   def __str__(self):
     return " ".join([str(x) for x in ["gene_id =", self.gene_id, "terminus =", self.terminus, "life_stage =", self.life_stage]])
+  
+  def __hash__(self):
+    return hash((self.gene_id, self.terminus, self.life_stage))
 
 class CellImage():
   """
@@ -49,7 +52,7 @@ class CellImage():
     rotated: bool,
     field_index: int = 0,
     cell_index: int = 0,
-    cell_line: Any = None
+    cell_line: CellLine | None = None
   ):
     self.phase = phase
     self.mng = mng
@@ -111,6 +114,11 @@ class FieldImage():
       string += str(self.cell_line)
     string += " " + " ".join([str(x) for x in ["field_index =", self.field_index]])
     return string
+
+class _tqdmDownload(tqdm):
+  def urllib_callback(self, transferred_blocks, block_size, total_size):
+    self.total = total_size
+    return self.update(transferred_blocks * block_size - self.n)
 
 class TrypTag:
   def __init__(
@@ -604,24 +612,6 @@ class TrypTag:
     :param cell line: `CellLine` object containing `life_stage`, `gene_id` and `terminus`.
     :return: List of dicts of all cells for this `life_stage`, `gene_id` and `terminus` in the form `{"field_index": field_index, "cell_index": cell_index}`
     """
-    # progress bar object for file download/unzipping
-    global _progress_bar
-    _progress_bar = None
-
-    def _show_progress_bar(block_num: int, block_size: int, total_size: int):
-      """
-      Progress bar handler for file download and zip decompression.
-      """
-      global _progress_bar
-      if _progress_bar is None:
-        _progress_bar = progressbar.ProgressBar(maxval=total_size)
-        _progress_bar.start()
-      downloaded = block_num * block_size
-      if downloaded < total_size:
-        _progress_bar.update(downloaded)
-      else:
-        _progress_bar.finish()
-        _progress_bar = None
 
     def _file_md5_hash(path: str, blocksize:int = 2**20) -> str:
       """
@@ -673,7 +663,8 @@ class TrypTag:
         while zip_md5 != self.zenodo_index[plate]["record_md5"]:
           if self.print_status:
             print("  Downloading data from: "+self.zenodo_index[plate]["record_url"])
-            urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, _show_progress_bar)
+            with _tqdmDownload(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=plate) as progress:
+              urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp, progress.urllib_callback)
           else:
             urllib.request.urlretrieve(self.zenodo_index[plate]["record_url"], zip_path_temp)
           if self.print_status: print("  Checking MD5 hash of: "+plate+".zip.tmp")
@@ -697,14 +688,10 @@ class TrypTag:
           try:
             with ZipFile(zip_path) as archive:
               suffix = "_roisCells.txt"
-              count_checked = 0
-              total_names = len(archive.namelist())
               count_decompressed = 0
               missing = []
               # do decompression
-              for file in archive.namelist():
-                count_checked += 1
-                if self.print_status: _show_progress_bar(count_checked, 1, total_names)
+              for file in tqdm(archive.namelist(), unit=' files', miniters=1, desc=plate, disable=not self.print_status, smoothing=0):
                 # loop through all files, finding files ending with the cell roi suffix and not starting with control (or common misspellings)
                 if file.endswith(suffix) and not (os.path.split(file)[-1].startswith("control") or os.path.split(file)[-1].startswith("ontrol") or os.path.split(file)[-1].startswith("Control")):
                   source_path = os.path.split(file)
@@ -1090,35 +1077,28 @@ class TrypTag:
       rotated=rotate,
     )
 
-  def _list_analysis_worker(self, work_list: list, analysis_function: callable, tryptag = None, worker_index: int = None) -> list:
+  def _list_analysis_worker(self, cell_line: CellLine, analysis_function: callable, threading_mode: bool) -> list:
     """
     Worker for multiprocess/thread parallel analysis of a `work_list`.
 
-    :param work_list: List of `CellLine` objects defining each `life_stage`, `gene_id` and `terminus` combination to analyse.
+    :param cell_line: `CellLine` object defining the `life_stage`, `gene_id` and `terminus` combination to analyse.
     :param analysis_function: Function name to use for analysis. `analysis_function` should take exactly two arguments, `tryptag` (`TrypTag` instance) and `cell_line` (`CellLine` object) in this order.
-    :param tryptag: `TrypTag` instance, copied for use by this spawned thread/process. If `None`, then do not copy and use `self`.
-    :param worker_index: Index of current worker.
+    :param threading_mode: True if running in threading mode. This triggers a deep copy of `self` to avoid thread safety issues.
     :return: List of dicts in the form `{"life_stage": life_stage, "gene_id": gene_id, "terminus": terminus, "result": analysis_function_return}`.
     """
-    # if passed a TrypTag instance then use a copy (for running as a spawned thread/process), otherwise use self as current_tryptag
-    if tryptag is None:
-      current_tryptag = self
-    else:
+    # Deep copy tryptag object if running in threading mode (to avoid thread safety issues)
+    if threading_mode:
       from copy import deepcopy
-      current_tryptag = deepcopy(tryptag)
-    results = []
-    for cell_line_index, cell_line in enumerate(work_list):
-      if self.print_status and worker_index is not None: print("  Worker index", worker_index + 1, "processing worklist entry", cell_line_index + 1, "of", len(work_list))
-      result = {
-        "cell_line": cell_line
-      }
-      current_tryptag.fetch_data(cell_line)
-      current_result = analysis_function(current_tryptag, cell_line)
-      result.update({
-          "result": current_result
-      })
-      results.append(result)
-    return results
+      self = deepcopy(self)
+
+    if self.print_status: print(f"  Starting to process cell line { cell_line }")
+
+    self.fetch_data(cell_line)
+    result = {
+      "cell_line": cell_line,
+      "result": analysis_function(self, cell_line),
+    }
+    return result
 
   def analyse_list(self, work_list, analysis_function, workers=None, multiprocess_mode="process"):
     """
@@ -1133,45 +1113,38 @@ class TrypTag:
     import concurrent.futures
     import multiprocessing
     import numpy
+    
     if self.print_status: print("Analysing worklist")
+
     # deduplicate work_list
-    dedup_work_list = []
-    for entry in work_list:
-      if entry not in dedup_work_list:
-        dedup_work_list.append(entry)
+    dedup_work_list = set(work_list)
+
+    # get number of workers, default to number of cpus
+    if workers is None:
+      workers = multiprocessing.cpu_count()
+
     if multiprocess_mode is None:
-      # run by direct call of the _list_analysis_worker function
+      # run in a single thread, still use the ThreadPoolExecutor since that's equivalent
       if self.print_status: print("  Single process")
-      results = self._list_analysis_worker(work_list, analysis_function)
+      Executor = concurrent.futures.ThreadPoolExecutor
+      workers = 1
+    elif multiprocess_mode == "process":
+      # setup executor as a process pool
+      if self.print_status: print("  Parallel processes with", workers, "workers")
+      Executor = concurrent.futures.ProcessPoolExecutor
+    elif multiprocess_mode == "thread":
+      # setup executor as a thread pool
+      if self.print_status: print("  Parallel threads with", workers, "workers")
+      Executor = concurrent.futures.ThreadPoolExecutor
     else:
-      # get number of workers, default to number of cpus
-      if workers is None:
-        workers = multiprocessing.cpu_count()
-      # split dedup_work_list list into lists for each worker
-      split_work_list = numpy.array_split(dedup_work_list, workers)
-      if multiprocess_mode == "process":
-        # setup executor as a process pool
-        if self.print_status: print("  Parallel processes with", workers, "workers")
-        executor = concurrent.futures.ProcessPoolExecutor(max_workers=workers)
-      elif multiprocess_mode == "thread":
-        # setup executor as a thread pool
-        if self.print_status: print("  Parallel threads with", workers, "workers")
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
-      # trigger fetch of gene_list and zenodo_index, prior to copying for each thread
-      self.zenodo_index
-      self.gene_list
-      # loop for setting up futures
-      results = []
-      futures = []
-      for i in range(len(split_work_list)):
-        # pass each split_work_list list item to a _list_analysis_worker function
-        if len(split_work_list[i]) > 0:
-          future = executor.submit(self._list_analysis_worker, work_list=split_work_list[i], analysis_function=analysis_function, tryptag=self, worker_index=i)
-        futures.append(future)
-      for future in concurrent.futures.as_completed(futures):
-        # concatenate results as they are returned
-        results += future.result()
-      # return concatenated results
+      raise ValueError(f"Unknown multiprocess_mode '{multiprocess_mode}")
+
+    # trigger fetch of gene_list and zenodo_index, prior to copying for each thread
+    self.zenodo_index
+    self.gene_list
+    with Executor(workers) as executor:
+      futures = [executor.submit(self._list_analysis_worker, cell_line=cell_line, analysis_function=analysis_function, threading_mode=multiprocess_mode=="thread") for cell_line in dedup_work_list]
+      results = [future.result() for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), smoothing=0)]
     return results
 
 class BSFTag(TrypTag):
