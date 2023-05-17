@@ -230,8 +230,8 @@ def cell_morphology_analysis(cell_image) -> dict:
         kn_analysis["objects_n"].reverse()
       # add cell anterior and posterior coordinates to morphology object
       midline_analysis.update({
-        "anterior": midline_analysis["midline"][0],
-        "posterior": midline_analysis["midline"][-1]
+        "anterior": midline_analysis["midline"][-1],
+        "posterior": midline_analysis["midline"][0]
       })
       # add ordered kn representation
       kn_analysis.update({
