@@ -230,8 +230,8 @@ def cell_morphology_analysis(cell_image) -> dict:
         kn_analysis["objects_n"].reverse()
       # add cell anterior and posterior coordinates to morphology object
       midline_analysis.update({
-        "anterior": midline_analysis["midline"][0],
-        "posterior": midline_analysis["midline"][-1]
+        "anterior": midline_analysis["midline"][-1],
+        "posterior": midline_analysis["midline"][0]
       })
       # add ordered kn representation
       kn_analysis.update({
@@ -278,8 +278,8 @@ def plot_morphology_analysis(cell_image, result):
     plt.plot([a[1] for a in result["midline"]], [a[0] for a in result["midline"]], color=(0.8, 0.8, 0.8, 0.2))
   # anterior and posterior points (magenta, yellow)
   if "anterior" in result:
-    plt.scatter([result["anterior"][1]], [result["anterior"][0]], s=10, marker="o", color=(1.0, 1.0, 0.0, 0.5))
-    plt.scatter([result["posterior"][1]], [result["posterior"][0]], s=10, marker="o", color=(1.0, 0.0, 1.0, 0.5))
+    plt.scatter([result["anterior"][1]], [result["anterior"][0]], s=10, marker="o", color=(1.0, 0.0, 1.0, 0.5))
+    plt.scatter([result["posterior"][1]], [result["posterior"][0]], s=10, marker="o", color=(1.0, 1.0, 0.0, 0.5))
   # nearest point on midline to centroid of kinetoplasts and nuclei (dark blue, green)
   if "midline" in result:
     if "objects_k" in result:
