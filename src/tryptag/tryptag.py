@@ -1118,6 +1118,9 @@ class TrypTag:
 
     # deduplicate work_list
     dedup_work_list = set(work_list)
+    for entry in dedup_work_list:
+      if entry.life_stage is None:
+        entry.life_stage = self.life_stages[0]
 
     # get number of workers, default to number of cpus
     if workers is None:
