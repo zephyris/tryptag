@@ -3,7 +3,6 @@ import urllib.request
 import os
 import shutil
 import glob
-import urllib.request
 from zipfile import ZipFile, BadZipFile
 from typing import NamedTuple, Any, Callable
 
