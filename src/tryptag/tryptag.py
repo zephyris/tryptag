@@ -1,3 +1,4 @@
+from __future__ import annotations
 from functools import cached_property
 import urllib.request
 import os
