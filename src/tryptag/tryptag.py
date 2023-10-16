@@ -246,7 +246,7 @@ class TrypTag:
     """
     import json
     # fetch Zenodo record JSON
-    url = "https://zenodo.org/api/records/"+str(zenodo_id)
+    url = "https://zenodo.org/api/records/"+str(zenodo_id)+"/versions/latest
     if self.print_status: print("  Fetching Zenodo record for "+str(zenodo_id)+" from: "+url)
     text = self._fetch_zenodo_text(url)
     return json.loads(text)
