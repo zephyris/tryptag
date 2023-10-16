@@ -246,7 +246,7 @@ class TrypTag:
     """
     import json
     # fetch Zenodo record JSON
-    url = "https://zenodo.org/api/records/"+str(zenodo_id)
+    url = "https://zenodo.org/api/records/"+str(zenodo_id)+"/versions/latest"
     if self.print_status: print("  Fetching Zenodo record for "+str(zenodo_id)+" from: "+url)
     text = self._fetch_zenodo_text(url)
     return json.loads(text)
@@ -262,8 +262,8 @@ class TrypTag:
     from urllib.request import urlopen
     from urllib.error import HTTPError
     for file in zenodo_json["files"]:
-      if file["key"] == file_name:
-        url = file["links"]["self"]
+      if file["filename"] == file_name:
+        url = f"https://zenodo.org/api/records/{zenodo_json['record_id']}/files/{file_name}/content"
         if self.print_status: print("  Fetching file "+file_name+" from: "+url)
         return self._fetch_zenodo_text(url)
 
@@ -654,8 +654,8 @@ class TrypTag:
           self.zenodo_index[plate]["record_doi"] = zenodo_json["doi"]
           self.zenodo_index[plate]["record_id"] = str(zenodo_json["id"])
           for file in zenodo_json["files"]:
-            if file["key"].endswith("_processed.zip"):
-              self.zenodo_index[plate]["record_url"] = file["links"]["self"]
+            if file["filename"].endswith("_processed.zip"):
+              self.zenodo_index[plate]["record_url"] = f"https://zenodo.org/api/records/{zenodo_json['record_id']}/files/{file['filename']}/content"
               self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
         # download data
         zip_md5 = 0
@@ -788,7 +788,7 @@ class TrypTag:
         # get md5 of source file from zenodo entry latest version
         zenodo_json = self._fetch_zenodo_record_json(self.zenodo_index[plate]["master_record_id"])
         for file in zenodo_json["files"]:
-          if file["key"].endswith("_processed.zip"):
+          if file["filename"].endswith("_processed.zip"):
             self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
       # first, check md5s
       if os.path.isdir(dir_path):
