@@ -262,8 +262,8 @@ class TrypTag:
     from urllib.request import urlopen
     from urllib.error import HTTPError
     for file in zenodo_json["files"]:
-      if file["key"] == file_name:
-        url = file["links"]["self"]
+      if file["filename"] == file_name:
+        url = f"https://zenodo.org/api/records/{zenodo_json['record_id']}/files/{file_name}/content"
         if self.print_status: print("  Fetching file "+file_name+" from: "+url)
         return self._fetch_zenodo_text(url)
 
