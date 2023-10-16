@@ -654,8 +654,8 @@ class TrypTag:
           self.zenodo_index[plate]["record_doi"] = zenodo_json["doi"]
           self.zenodo_index[plate]["record_id"] = str(zenodo_json["id"])
           for file in zenodo_json["files"]:
-            if file["key"].endswith("_processed.zip"):
-              self.zenodo_index[plate]["record_url"] = file["links"]["self"]
+            if file["filename"].endswith("_processed.zip"):
+              self.zenodo_index[plate]["record_url"] = f"https://zenodo.org/api/records/{zenodo_json['record_id']}/files/{file['filename']}/content"
               self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
         # download data
         zip_md5 = 0
@@ -788,7 +788,7 @@ class TrypTag:
         # get md5 of source file from zenodo entry latest version
         zenodo_json = self._fetch_zenodo_record_json(self.zenodo_index[plate]["master_record_id"])
         for file in zenodo_json["files"]:
-          if file["key"].endswith("_processed.zip"):
+          if file["filename"].endswith("_processed.zip"):
             self.zenodo_index[plate]["record_md5"] = file["checksum"].split(":")[-1]
       # first, check md5s
       if os.path.isdir(dir_path):
