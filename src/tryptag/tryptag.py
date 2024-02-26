@@ -330,7 +330,7 @@ class TrypTag:
     # load localisations table
     # download localisations.tsv from master record
     zenodo_json = self._fetch_zenodo_record_json(self.zenodo_record_id)
-    lines = self._fetch_zenodo_record_file(zenodo_json, "localisations.tsv").splitlines()
+    lines = [line for line in self._fetch_zenodo_record_file(zenodo_json, "localisations.tsv").splitlines() if line.strip()]
     # load into default life stage
     # TODO: Handle loading of multiple different life stages
     gene_list = {self.life_stages[0]: {}}
