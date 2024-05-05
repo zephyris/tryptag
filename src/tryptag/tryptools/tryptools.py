@@ -31,7 +31,7 @@ def _mask_pruned_skeleton(thr, prefilter_radius, prune_length):
   :param cell_image: An `skimage` image / `numpy` `ndarray` of the mask for skeletonisation.
   :param prefilter_radius: Gaussian blur radius for pre-filtering.
   :param prune_length: Shortest branch length to retain, will remove the entire skeleton if a single line shorter than this.
-  :return: An `skimage` image / `numpy` `ndarray` of the skeleton.
+  :return: An `skimage` image / `numpy` `ndarray` of the skeleton and an ndarray for the distance transform of the thresholded image, which is used for calculating the corrected cell length.
   """
   # pre-filter with gaussian blur
   thr_fil = skimage.filters.gaussian(thr, sigma=prefilter_radius) > 0.5
@@ -83,7 +83,7 @@ def _mask_pruned_skeleton(thr, prefilter_radius, prune_length):
 def cell_kn_analysis(cell_image, min_area=17, kn_threshold_area=250):
   """
   Classifies and measures DNA signal in a trypanosome kinetoplast and nucleus from `phase_mask`, `dna_mask` and `dna` images.
-  Returns centroid, area, sum median background-corrected `dna` signal.
+  Returns centroid, area, sum median background-corrected `dna` signal and the minor- and major axis length of an ellipse fitted to the dna_mask, as well as the orientation of this ellipse.
   Gives particularly informative anterior-posterior morphometry when a clean midline is found.
   Largely based on: doi:10.1186/1741-7007-10-1
 
