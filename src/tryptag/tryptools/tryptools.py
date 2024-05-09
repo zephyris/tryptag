@@ -83,7 +83,7 @@ def _mask_pruned_skeleton(thr, prefilter_radius, prune_length):
 def cell_kn_analysis(cell_image, min_area=17, kn_threshold_area=250):
   """
   Classifies and measures DNA signal in a trypanosome kinetoplast and nucleus from `phase_mask`, `dna_mask` and `dna` images.
-  Returns centroid, area, sum median background-corrected `dna` signal and the minor- and major axis length of an ellipse fitted to the dna_mask, as well as the orientation of this ellipse.
+  Returns centroid, area, sum median background-corrected `dna` signal and the minor and major axis length of an ellipse fitted to the dna_mask, as well as the orientation of this ellipse.
   Gives particularly informative anterior-posterior morphometry when a clean midline is found.
   Largely based on: doi:10.1186/1741-7007-10-1
 
@@ -264,8 +264,7 @@ def cell_morphology_analysis(cell_image) -> dict:
 
       midline_analysis.update({
         "distance": distance,
-        "length": distance[-1],
-        "corrected_length": distance[-1] + distance_ant + distance_post
+        "length": distance[-1] + distance_ant + distance_post
       })
   midline_analysis.update(kn_analysis)
   return midline_analysis
