@@ -136,7 +136,7 @@ The `tryptools` methods take a `CellImage` object as an input and return various
 
 ```python
 cell_image = tryptag.open_cell(CellLine(life_stage="procyclic", gene_id="Tb927.9.8570", terminus="n"))
-morphology_result = tryptools.cell_morphometry_analysis(cell_image)
+morphology_result = tryptools.cell_morphology_analysis(cell_image)
 ```
 
 ### High throughput
