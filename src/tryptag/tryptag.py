@@ -1091,7 +1091,7 @@ class TrypTag:
       from copy import deepcopy
       self = deepcopy(self)
 
-    if self.print_status: print(f"  Starting to process cell line { cell_line }")
+    #if self.print_status: print(f"  Starting to process cell line { cell_line }")
 
     self.fetch_data(cell_line)
     result = {
