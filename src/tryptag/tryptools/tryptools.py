@@ -16,12 +16,13 @@ def cell_signal_analysis(cell_image) -> dict:
   """
   mng = cell_image.mng - numpy.median(cell_image.mng)
   lab = skimage.measure.label(cell_image.phase_mask)
-  props_table = skimage.measure.regionprops_table(lab, mng, properties=("area", "intensity_max", "intensity_mean"))
+  props_table = skimage.measure.regionprops_table(lab, mng, properties=("area", "intensity_max", "intensity_mean", "intensity_min"))
   return {
     "cell_area": props_table["area"][0],
     "mng_mean": props_table["intensity_mean"][0],
     "mng_sum": props_table["intensity_mean"][0] * props_table["area"][0],
-    "mng_max": props_table["intensity_max"][0]
+    "mng_max": props_table["intensity_max"][0],
+    "mng_min": props_table["intensity_min"][0]
   }
 
 def _mask_pruned_skeleton(thr, prefilter_radius, prune_length):
