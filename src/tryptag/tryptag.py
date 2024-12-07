@@ -588,10 +588,10 @@ class TrypTag:
       cells = []
       for i in range(len(glob.glob(os.path.join(base_path, cell_line.gene_id+"_4_"+cell_line.terminus.upper()+"_*_roisCells.txt")))):
         with open(os.path.join(base_path, cell_line.gene_id+"_4_"+cell_line.terminus.upper()+"_"+str(i + 1)+"_roisCells.txt")) as cells_file:
-          lines = cells_file.readlines()
+          lines = [x.strip().split("\t") for x in cells_file.readlines()]
+          lines = [x for x in lines if len(x) == 8] # filter rare misformated lines, eg. BSF Tb427.03.2580_4_C_4_roisCells.txt
           cells.append([])
           for line in lines:
-            line = line.split("\t")
             if line[0] != "cell":
               cell_data = {}
               cell_data["wand"] = (int(line[1]), int(line[2]))
