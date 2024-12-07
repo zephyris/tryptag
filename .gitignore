@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+build/
+*.egg-info/
 
 # default tryptag data caches
 _tryptag_cache/
