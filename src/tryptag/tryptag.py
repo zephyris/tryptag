@@ -358,8 +358,8 @@ class TrypTag:
             }
             # additional data, optional columns
             if p+" classified as faint" in indices:
-              terminus_data["signl_low"]: line[indices[p + "fainter than parental"]]
-              terminus_data["signal_background"]: line[indices[p + "classified as faint"]]
+              terminus_data["signl_low"] = line[indices[p + "fainter than parental"]]
+              terminus_data["signal_background"] = line[indices[p + "classified as faint"]]
             # look up zenodo id
             terminus_data["zenodo_id"] = self.zenodo_index[terminus_data["plate"]]["master_record_id"]
             gene_list[self.life_stages[0]][line[0]][t] = terminus_data
