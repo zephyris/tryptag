@@ -346,7 +346,7 @@ class TrypTag:
         gene_list[self.life_stages[0]][line[0]] = {}
         termini = ["c", "n"]
         for t in termini:
-          p = t.upper()
+          p = t.upper() + " "
           if line[indices[p + "status"]] == "cell line generated":
             # data from columns which must be present
             terminus_data = {
@@ -357,7 +357,7 @@ class TrypTag:
               "primer_r": line[indices[p + "primer R"]]
             }
             # additional data, optional columns
-            if p+" classified as faint" in indices:
+            if p+"classified as faint" in indices:
               terminus_data["signl_low"] = line[indices[p + "fainter than parental"]]
               terminus_data["signal_background"] = line[indices[p + "classified as faint"]]
             # look up zenodo id
