@@ -346,7 +346,7 @@ class TrypTag:
         gene_list[self.life_stages[0]][line[0]] = {}
         termini = ["c", "n"]
         for t in termini:
-          p = t.upper() + " "
+          p = t.upper()
           if line[indices[p + "status"]] == "cell line generated":
             # data from columns which must be present
             terminus_data = {
