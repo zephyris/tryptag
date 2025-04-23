@@ -135,9 +135,15 @@ tryptag = TrypTag()
 The `tryptools` methods take a `CellImage` object as an input and return various automated image analysis data.
 
 ```python
-cell_image = tryptag.open_cell(CellLine(life_stage="procyclic", gene_id="Tb927.9.8570", terminus="n"))
+cell_image = tryptag.open_cell(CellLine(gene_id="Tb927.9.8570", terminus="n"))
 morphology_result = tryptools.cell_morphology_analysis(cell_image)
 ```
+
+It is possible to explicitly request cell lines from a specific life stage by using:
+```python
+cell_line = CellLine(life_stage="procyclic", gene_id="Tb927.9.8570", terminus="n")
+```
+If the `life_stage` argument is not given, it uses the first life stage given when the `TrypTag` object was initialised ("procyclic" by default).
 
 ### High throughput
 
@@ -182,7 +188,7 @@ This looks up in which tagging plate correspond to the most recent replicate of 
 It then downloads and decompresses the data to the `data_cache_path` directory.
 
 ```python
-tryptag.fetch_data(CellLine(life_stage="procyclic", gene_id="Tb927.7.1920", terminus="n"))
+tryptag.fetch_data(CellLine(gene_id="Tb927.7.1920", terminus="n"))
 ```
 
 This will take a long time; to get image data for a single gene the data for an entire plate needs to be downloaded. This is typically ~10 to 20 Gb.
