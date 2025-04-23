@@ -457,6 +457,19 @@ class TrypTag:
                                   ][line[0]][t] = terminus_data
         return gene_list
 
+    def _access_life_stage(self, cell_line: CellLine):
+        if cell_line.life_stage is not None:
+            life_stage = cell_line.life_stage
+        else:
+            life_stage = self.life_stages[0]
+        return self.gene_list[life_stage]
+
+    def _access_gene(self, cell_line: CellLine):
+        return self.gene_list[cell_line.gene_id]
+
+    def _access_terminus(self, cell_line: CellLine):
+        return self.gene_list[cell_line.terminus]
+
     def worklist_all(self, life_stage: str = None) -> list:
         """
         All `gene_id` and `terminus` combinations with data, as a `CellLine`
@@ -602,8 +615,7 @@ class TrypTag:
         :return: Whether or not this is a localisation match.
         """
         # get query localisation
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        localisations = gene[cell_line.terminus]["loc"]
+        localisations = self._access_terminus(cell_line)["locs"]
         # get ontology, and lead to keyerror if query_term not in ontology
         self.localisation_ontology[query_term]
         # iterate through each annotated localisation
@@ -779,8 +791,7 @@ class TrypTag:
         :param cell line: `CellLine` object containing `life_stage`, `gene_id`
             and `terminus`.
         """
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
+        terminus = self._access_terminus(cell_line)
         base_path = os.path.join(
             self.data_cache_path, terminus["plate"])
         if "cells" not in terminus and os.path.isdir(base_path):
@@ -858,8 +869,7 @@ class TrypTag:
                 print("Making data cache directory: "+self.data_cache_path)
             os.mkdir(self.data_cache_path)
         # target paths for zip file and data subdirectory
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
+        terminus = self._access_terminus(cell_line)
         plate = terminus["plate"]
         zip_path = os.path.join(self.data_cache_path, plate+".zip")
         dir_path = os.path.join(self.data_cache_path, plate)
@@ -1080,8 +1090,7 @@ class TrypTag:
         self.fetch_data(cell_line)
         # return field/cell list
         fieldcell_list = []
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
+        terminus = self._access_terminus(cell_line)
         for field_index, cell_list in enumerate(terminus["cells"]):
             for cell_index, cell in enumerate(cell_list):
                 fieldcell_list.append(
@@ -1097,8 +1106,7 @@ class TrypTag:
         :return: If the data is already cached
         """
         # path for data subdirectory
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
+        terminus = self._access_terminus(cell_line)
         plate = terminus["plate"]
         dir_path = os.path.join(self.data_cache_path, plate)
         # False if MD5 not yet copied to plate data directory
@@ -1221,8 +1229,7 @@ class TrypTag:
         # ensure data is fetched
         self.fetch_data(cell_line)
         # determine base path for files
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
+        terminus = self._access_terminus(cell_line)
         field_base_path = os.path.join(
             self.data_cache_path,
             terminus["plate"],
@@ -1480,8 +1487,7 @@ class TrypTag:
         if cell_line.life_stage is None:
             cell_line.life_stage = self.life_stages[0]
         self.fetch_data(cell_line)
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
+        terminus = self._access_terminus(cell_line)
         cell_data = terminus["cells"][field_index][cell_index]
         crop_centre = cell_data["centre"]
         fill_centre = cell_data["wand"]
@@ -1562,9 +1568,8 @@ class TrypTag:
             dna_(blue), phase_threshold, dna_threshold]`, often referred to as
             `[pth, mng, dna, pth, dth]`.
         """
+        terminus = self._access_terminus(cell_line)
         # if cell_index is set, then use tryptag defaults unless overridden
-        gene = self.gene_list[cell_line.life_stage][cell_line.gene_id]
-        terminus = gene[cell_line.terminus]
         if cell_index is not None:
             cell_data = terminus["cells"][field_index][cell_index]
             if crop_centre is None:
