@@ -17,6 +17,8 @@ dependencies = [
 	"tqdm",
 	"filelock",
 	"matplotlib",
+	"requests",
+	"annotations @ git+https://github.com/ulido/annotations",
 ]
 
 [project.urls]
