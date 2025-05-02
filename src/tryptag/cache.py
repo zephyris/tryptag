@@ -114,7 +114,7 @@ class Cache:
             for field in tqdm(
                 fields,
                 desc=f"Extracting {plate}",
-                disable=logger.getEffectiveLevel() >= logging.INFO,
+                disable=logger.getEffectiveLevel() < logging.INFO,
             ):
                 for filetype in FILE_TYPE_ENDINGS.values():
                     zippath = pathlib.Path(str(field) + filetype)
