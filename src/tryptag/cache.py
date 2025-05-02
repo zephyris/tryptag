@@ -9,6 +9,7 @@ import zipfile
 from filelock import FileLock
 from tqdm import tqdm
 
+
 class FileTypes(Enum):
     CELL_ROIS = 0
     THRESHOLDED = 1
@@ -100,13 +101,14 @@ class Cache:
             fields = [
                 pathlib.Path(fname.replace(FILE_PATTERN, ""))
                 for fname in zip.namelist()
-                if (
-                    fname.endswith(FILE_PATTERN) and
-                    not (
-                        fname.startswith("Control") or
-                        fname.startswith("ontrol") or
-                        fname.startswith("control")
-                    )
+                if fname.endswith(FILE_PATTERN)
+            ]
+            fields = [
+                fname for fname in fields
+                if not (
+                    fname.stem.startswith("Control") or
+                    fname.stem.startswith("ontrol") or
+                    fname.stem.startswith("control")
                 )
             ]
             for field in tqdm(
