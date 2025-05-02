@@ -184,6 +184,32 @@ class TrypTag:
             ):
                 hits.append(cell_line)
         return hits
+    
+    @property
+    def localisation_ontology(self):
+        ontology = {}
+        for name, entry in self.datasource.localisation_ontology.entries.items():
+            oentry = {}
+            if entry.synonyms is not None:
+                oentry["synonyms"] = list(entry.synonyms)
+            if entry.comment is not None:
+                oentry["comment"] = entry.comment
+            if entry.ident is not None:
+                oentry["ident"] = entry.ident
+            if entry.goterm is not None:
+                oentry["go"] = entry.goterm
+            current = entry.parent
+            ancestors = []
+            while current is not None:
+                ancestors.append(current.name)
+                current = current.parent
+            oentry["parent"] = ancestors[::-1]
+            if entry.children:
+                oentry["children"] = [child.name for child in entry.children]
+            if entry.examples:
+                oentry["examples"] = list(entry.examples)
+            ontology[name] = oentry
+        return ontology
 
     def gene_id_search(
             self,

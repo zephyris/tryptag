@@ -388,6 +388,7 @@ class DataSource:
                     raw_entry["comment"],
                     raw_entry["ident"] if "ident" in raw_entry else None,
                     raw_entry["go"] if "go" in raw_entry else None,
+                    raw_entry["examples"] if "examples" in raw_entry else None,
                 )
 
                 if entry.name in ontology.entries:
