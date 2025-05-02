@@ -49,7 +49,7 @@ class CellImage():
         if fill_centre is None:
             fill_centre = cell.wand
         if crop_centre is None:
-            crop_centre = cell.centre
+            crop_centre = (int(cell.centre[0]), int(cell.centre[1]))
         if angle is None:
             angle = cell.angle
 
@@ -219,7 +219,7 @@ class FieldImage():
     field: Field | None = None
     custom_field_image: FieldImage | None = None
 
-    _CACHE: dict[
+    _CACHE: weakref.WeakValueDictionary[
         tuple[Field, FieldImage | None], FieldImage
     ] = weakref.WeakValueDictionary()
 
@@ -270,6 +270,8 @@ class FieldImage():
         self,
         datasource: DataSource,
     ):
+        if self.field is None:
+            raise ValueError("self.field is None")
         img_path = datasource.load_plate_file(
             self.field.cell_line.plate,
             self.field.filename(FileTypes.IMAGE),
@@ -284,6 +286,8 @@ class FieldImage():
         self,
         datasource: DataSource,
     ):
+        if self.field is None:
+            raise ValueError("self.field is None")
         thr_path = datasource.load_plate_file(
             self.field.cell_line.plate,
             self.field.filename(FileTypes.THRESHOLDED),

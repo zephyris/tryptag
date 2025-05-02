@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import logging
+import typing
 import requests
 from tqdm import tqdm
 
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 class ZenodoFile:
     def __init__(self, data: dict):
-        self.checksum: str = data["checksum"]
         self.id: str = data["id"]
         self.name: str = data["key"]
         self.url: str = data["links"]["self"]
@@ -79,11 +79,11 @@ class ZenodoRecord:
         return ZenodoRecord(r.json())
 
     @staticmethod
-    def from_file(json_file: io.BufferedIOBase):
+    def from_file(json_file: typing.IO):
         with json_file:
             return ZenodoRecord(json.load(json_file))
 
-    def to_file(self, outfile: io.BufferedIOBase):
+    def to_file(self, outfile: typing.IO):
         with outfile:
             json.dump(self._original_data, outfile)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections.abc import Mapping
 import csv
-from dataclasses import InitVar, dataclass
+from dataclasses import dataclass
 import enum
 from functools import cached_property
 import json
@@ -12,7 +12,6 @@ from typing import Literal
 from .cache import Cache, FileTypes, FILE_TYPE_ENDINGS, FILE_PATTERN
 
 from annotations import (
-    AnnotationCollection,
     Ontology,
     OntologyEntry,
     OntologyAnnotationCollection,
@@ -122,7 +121,7 @@ class Field:
             f"{FILE_TYPE_ENDINGS[file_type]}"
         )
 
-    def exists(self):
+    def exists(self) -> bool:
         """Check that this field exists. Please note that this will trigger a
         download if the files are not found in the cache.
         """
@@ -140,53 +139,52 @@ class Field:
         return f"{self.cell_line} index = {self.index}"
 
 
-@dataclass
 class CellLine:
-    terminus: Literal["N"] | Literal["C"]
-    status_raw: InitVar[str]
-    plate_and_well_raw: InitVar[str]
-    forward_primer: str
-    reverse_primer: str
-    localisation_raw: InitVar[str]
-    fainter_than_parental: bool
-    classified_faint: bool
-    datasource: DataSource
-    ontology: InitVar[Ontology]
-    status: CellLineStatus | None = None
-    plate: str | None = None
-    well: str | None = None
-    gene_id: str | None = None
-    life_stage: str | None = None
-    localisation: AnnotationCollection | None = None
+    gene: Gene
 
-    def __post_init__(
+    def __init__(
         self,
-        status_raw: str,
-        plate_and_well_raw: str,
-        localisation_raw: str,
+        terminus: Literal["N", "C"],
+        status: str,
+        plate_and_well: str,
+        forward_primer: str,
+        reverse_primer: str,
+        localisation: str,
+        fainter_than_parental: bool,
+        classified_faint: bool,
+        datasource: DataSource,
         ontology: Ontology,
     ):
-        self.status = CELL_LINE_STATUS_MAP[status_raw]
+        self.terminus = terminus
+        self.status = CELL_LINE_STATUS_MAP[status]
         if self.status != CellLineStatus.NOT_ATTEMPTED:
-            self.plate, self.well = plate_and_well_raw.split(" ")
-
+            self.plate, self.well = plate_and_well.split(" ")
+        else:
+            self.plate, self.well = "", ""
+        self.forward_primer = forward_primer
+        self.reverse_primer = reverse_primer
         self.localisation = OntologyAnnotationCollection(
-            localisation_raw,
-            ontology
+            localisation,
+            ontology,
         )
+        self.fainter_than_parental = fainter_than_parental
+        self.classified_faint = classified_faint
+        self.datasource = datasource
+
+        self.life_stage = None
 
     def __hash__(self):
         return hash(
-            (self.datasource, self.gene_id, self.terminus, self.life_stage))
+            (self.datasource, self.gene.id, self.terminus, self.life_stage))
 
     def __repr__(self):
         return (
-            f"gene_id = {self.gene_id} terminus = {self.terminus} "
+            f"gene_id = {self.gene.id} terminus = {self.terminus} "
             f"life_stage = {self.life_stage}"
         )
 
     def filename_stem(self):
-        return f"{self.gene_id}_4_{self.terminus}_"
+        return f"{self.gene.id}_4_{self.terminus}_"
 
     @cached_property
     def fields(self):
@@ -212,7 +210,7 @@ class Gene(Mapping):
     N: CellLine
     C: CellLine
 
-    def __getitem__(self, terminus: Literal["N"] | Literal["C"]):
+    def __getitem__(self, terminus: str):
         terminus = terminus.upper()
         if terminus == "N":
             return self.N
@@ -292,33 +290,33 @@ class DataSource:
     ):
         raise NotImplementedError
 
-    def _load_gene_list(self):
+    def _load_gene_list(self) -> dict[str, Gene]:
         logger.debug("Loading gene list.")
 
-        genes: dict[str: Gene] = {}
+        genes: dict[str, Gene] = {}
         with self.load_root_file("localisations.tsv") as localisations:
             locreader = csv.reader(
                 localisations,
                 delimiter="\t",
             )
             headers = next(locreader)
-            for row in locreader:
-                row = dict(zip(headers, row))
-                N = CellLine(
+            for raw_row in locreader:
+                row = dict(zip(headers, raw_row))
+                N = CellLine(  # type: ignore[misc]
                     "N",
-                    *[row["N " + h] for h in HEADERS_CELL_LINE],
+                    *[row["N " + h] for h in HEADERS_CELL_LINE],  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
-                C = CellLine(
+                C = CellLine(  # type: ignore[misc]
                     "C",
-                    *[row["C " + h] for h in HEADERS_CELL_LINE],
+                    *[row["C " + h] for h in HEADERS_CELL_LINE],  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
-                gene = Gene(*[row[h] for h in HEADERS_GENE], N, C)
-                C.gene_id = gene.id
-                N.gene_id = gene.id
+                gene = Gene(*[row[h] for h in HEADERS_GENE], N, C)  # type: ignore[call-arg,arg-type]
+                C.gene = gene
+                N.gene = gene
                 genes[gene.id] = gene
         return genes
 

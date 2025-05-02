@@ -141,10 +141,10 @@ class TrypTag:
     def localisation_search(
             self,
             query_term: str,
-            life_stage: str = None,
+            life_stage: str | None = None,
             match_subterms: bool = True,
-            exclude_modifiers: list = ["weak", "<10%"],
-            required_modifiers: list = None
+            exclude_modifiers: list[str] = ["weak", "<10%"],
+            required_modifiers: list[str] | None = None
     ) -> list:
         """
         Get a worklist of `gene_id` and `terminus` hits where any of the
@@ -163,17 +163,22 @@ class TrypTag:
         :return: List of `CellLine` objects of the hits, containing
             `life_stage`, `gene_id` and `terminus`.
         """
-        # determine life stage
-        if life_stage is None:
-            life_stage = next(iter(self.datasources))
+        if required_modifiers is None:
+            set_of_required_mods = None
+        else:
+            set_of_required_mods = set(required_modifiers)
+        if exclude_modifiers is None:
+            set_of_excluded_mods = None
+        else:
+            set_of_excluded_mods = set(exclude_modifiers)
 
         # check all against query
         hits = []
         for cell_line in self.worklist_all(life_stage):
             if cell_line.localisation.match(
                     query_term,
-                    require_modifiers=required_modifiers,
-                    exclude_modifiers=exclude_modifiers,
+                    require_modifiers=set_of_required_mods,
+                    exclude_modifiers=set_of_excluded_mods,
                     recursive=match_subterms,
             ):
                 hits.append(cell_line)
@@ -182,7 +187,7 @@ class TrypTag:
     def gene_id_search(
             self,
             gene_id_list: list,
-            life_stage: str = None
+            life_stage: str | None = None
     ) -> list:
         """
         Use a list of gene ids to build a worklist of all tagged termini for
@@ -195,7 +200,7 @@ class TrypTag:
         # build list
         hits = []
         for cell_line in self.worklist_all(life_stage):
-            if cell_line.gene_id in gene_id_list:
+            if cell_line.gene.id in gene_id_list:
                 hits.append(cell_line)
         return hits
 
@@ -289,9 +294,9 @@ class TrypTag:
     def _list_analysis_worker(
         self,
         cell_line: CellLine,
-        analysis_function: callable,
+        analysis_function: Callable,
         threading_mode: bool
-    ) -> list:
+    ):
         """
         Worker for multiprocess/thread parallel analysis of a `work_list`.
 
