@@ -203,7 +203,7 @@ class TrypTag:
             while current is not None:
                 ancestors.append(current.name)
                 current = current.parent
-            oentry["parent"] = ancestors[::-1]
+            oentry["parent"] = ["root"] + ancestors[::-1]
             if entry.children:
                 oentry["children"] = [child.name for child in entry.children]
             if entry.examples:
