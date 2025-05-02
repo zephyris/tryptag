@@ -141,9 +141,37 @@ class Field:
 
 class CellLine:
     gene: Gene
+    gene_id: str
+    terminus: Literal["N", "C"]
+    status: CellLineStatus
+    plate: str
+    well: str
+    forward_primer: str
+    reverse_primer: str
+    localisation: OntologyAnnotationCollection
+    fainter_than_parental: bool
+    classified_faint: bool
+    datasource: DataSource
+    life_stage = None
 
     def __init__(
         self,
+        gene_id: str,
+        terminus: str
+    ):
+        self._initialised = False
+        self.gene_id = gene_id
+        terminus = terminus.upper()
+        if terminus not in ["N", "C"]:
+            raise ValueError("terminus needs to be either 'N' or 'C'")
+        self.terminus = terminus
+
+    @property
+    def initialised(self):
+        return self._initialised
+
+    @staticmethod
+    def from_data(
         terminus: Literal["N", "C"],
         status: str,
         plate_and_well: str,
@@ -155,6 +183,7 @@ class CellLine:
         datasource: DataSource,
         ontology: Ontology,
     ):
+        self = CellLine("", terminus)
         self.terminus = terminus
         self.status = CELL_LINE_STATUS_MAP[status]
         if self.status != CellLineStatus.NOT_ATTEMPTED:
@@ -171,7 +200,9 @@ class CellLine:
         self.classified_faint = classified_faint
         self.datasource = datasource
 
-        self.life_stage = None
+        self._initialised = True
+
+        return self
 
     def __hash__(self):
         return hash(
@@ -302,13 +333,13 @@ class DataSource:
             headers = next(locreader)
             for raw_row in locreader:
                 row = dict(zip(headers, raw_row))
-                N = CellLine(  # type: ignore[misc]
+                N = CellLine.from_data(  # type: ignore[misc]
                     "N",
                     *[row["N " + h] for h in HEADERS_CELL_LINE],  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
-                C = CellLine(  # type: ignore[misc]
+                C = CellLine.from_data(  # type: ignore[misc]
                     "C",
                     *[row["C " + h] for h in HEADERS_CELL_LINE],  # type: ignore[arg-type]
                     datasource=self,

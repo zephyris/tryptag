@@ -224,6 +224,9 @@ class TrypTag:
             attributes `phase`, `mng`, `dna`, and the thresholds `phase_mask`
             and `dna_mask`.
         """
+        if not cell_line.initialised:
+            cell_line = self.gene_list[cell_line.gene_id][cell_line.terminus]
+
         return FieldImage.from_field(
             cell_line.fields[field_index],
             custom_field_image=custom_field_image
@@ -273,6 +276,9 @@ class TrypTag:
             `phase`, `mng`, `dna`, and the thresholds `phase_mask`, `dna_mask`
             and `phase_mask_othercells`.
         """
+        if not cell_line.initialised:
+            cell_line = self.gene_list[cell_line.gene_id][cell_line.terminus]
+
         field = cell_line.fields[field_index]
         cell = field.cells[cell_index]
         return CellImage(
