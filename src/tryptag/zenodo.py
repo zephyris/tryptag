@@ -130,7 +130,7 @@ class Zenodo(DataSource):
         record = self._load_or_fetch_record(record_id)
 
         zip_lock = self.cache.lock_file_name(f"zenodo_platezip_{plate}")
-        if not zip_lock.is_locked():
+        if not zip_lock.is_locked:
             # The file isn't being downloaded in another thread
             # TODO: There is a potential race condition here between the
             # is_locked check above and acquiring the lock below!
