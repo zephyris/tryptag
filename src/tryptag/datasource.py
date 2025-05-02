@@ -140,8 +140,8 @@ class Field:
 
 
 class CellLine:
-    gene: Gene
-    gene_id: str
+    gene: Gene = None
+    gene_id: str = ""
     terminus: Literal["N", "C"]
     status: CellLineStatus
     plate: str
@@ -210,8 +210,8 @@ class CellLine:
 
     def __repr__(self):
         return (
-            f"gene_id = {self.gene.id} terminus = {self.terminus} "
-            f"life_stage = {self.life_stage}"
+            f"gene_id = {self.gene.id if self.gene is not None else self.gene_id} "
+            f"terminus = {self.terminus} life_stage = {self.life_stage}"
         )
 
     def filename_stem(self):

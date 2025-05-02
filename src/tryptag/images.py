@@ -6,7 +6,7 @@ import numpy
 import skimage
 
 from .cache import FileTypes
-from .datasource import Field, Cell, DataSource
+from .datasource import Field, Cell, CellLine, DataSource
 
 
 class CellImage():
@@ -216,7 +216,9 @@ class FieldImage():
     phase_mask: numpy.ndarray | None = None
     dna_mask: numpy.ndarray | None = None
 
+    cell_line: CellLine | None = None
     field: Field | None = None
+    _field_index: int | None = None
     custom_field_image: FieldImage | None = None
 
     _CACHE: weakref.WeakValueDictionary[
@@ -225,8 +227,33 @@ class FieldImage():
 
     def __init__(
         self,
+        phase: numpy.ndarray | None = None,
+        mng: numpy.ndarray | None = None,
+        dna: numpy.ndarray | None = None,
+        phase_mask: numpy.ndarray | None = None,
+        dna_mask: numpy.ndarray | None = None,
+        cell_line: CellLine | None = None,
+        field_index: int | None = None,
     ):
-        pass
+        self.phase = phase
+        self.mng = mng
+        self.dna = dna
+        self.phase_mask = phase_mask
+        self.dna_mask = dna_mask
+        if (cell_line is None) != (field_index is None):
+            raise ValueError("need to specify both cell_line and field_index")
+        elif cell_line is not None:
+            self.cell_line = cell_line
+            self._field_index = field_index
+
+            if cell_line.initialised:
+                self.field = cell_line.fields[field_index]
+    
+    @property
+    def field_index(self):
+        if self.field is not None:
+            return self.field.index
+        return self._field_index
 
     def update(self, other: FieldImage):
         """Update this FieldImage with non-None image planes in `other`."""
