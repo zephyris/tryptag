@@ -414,7 +414,7 @@ class TrypTag:
             workers = 1
         elif multiprocess_mode == "process":
             # setup executor as a process pool
-            logger.info("Parallel processes with", workers, "workers")
+            logger.info(f"Parallel processes with {workers} workers")
             Executor = concurrent.futures.ProcessPoolExecutor
         elif multiprocess_mode == "thread":
             # setup executor as a thread pool
