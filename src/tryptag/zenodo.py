@@ -47,7 +47,7 @@ class ZenodoFile:
                 total=total_size,
                 unit="B",
                 unit_scale=True,
-                disable=logger.getEffectiveLevel() > logging.INFO,
+                disable=logger.getEffectiveLevel() >= logging.INFO,
             ) as progress_bar:
                 for chunk in r.iter_content(block_size):
                     progress_bar.update(len(chunk))
