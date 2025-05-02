@@ -6,7 +6,7 @@ import warnings
 from tqdm.auto import tqdm
 
 from .cache import Cache
-from .datasource import TERMINI, CellLine, DataSource
+from .datasource import CellLine, CellLineStatus, DataSource
 from .zenodo import Zenodo
 from .images import FieldImage, CellImage
 
@@ -123,9 +123,10 @@ class TrypTag:
             warnings.warn("life_stage is deprecated and ignored.")
 
         return [
-            gene_entry[terminus]
-            for gene_id, gene_entry in self.gene_list.items()
-            for terminus in TERMINI
+            cell_line
+            for gene_id, gene in self.gene_list.items()
+            for cell_line in [gene.C, gene.N]
+            if cell_line.status == CellLineStatus.GENERATED
         ]
 
     def worklist_parental(self, life_stage: str | None = None) -> list:
@@ -138,10 +139,13 @@ class TrypTag:
             warnings.warn("life_stage is deprecated and ignored.")
 
         return [
-            gene_entry[terminus]
-            for gene_id, gene_entry in self.gene_list.items()
-            for terminus in TERMINI
-            if "wild-type" in gene_id
+            cell_line
+            for gene_id, gene in self.gene_list.items()
+            for cell_line in [gene.C, gene.N]
+            if (
+                "wild-type" in gene_id and
+                cell_line.status == CellLineStatus.GENERATED
+            )
         ]
 
     def localisation_search(

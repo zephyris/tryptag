@@ -237,7 +237,9 @@ class CellLine:
         return f"{self.gene.id}_4_{self.terminus}_"
 
     @cached_property
-    def fields(self):
+    def fields(self) -> dict[int, Field]:
+        if self.status != CellLineStatus.GENERATED:
+            return {}
         stem = self.filename_stem()
         files = self.datasource.glob_plate_files(
             self.plate,
