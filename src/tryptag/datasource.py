@@ -228,13 +228,30 @@ class Gene(Mapping):
         return 2
 
 
-class DataSource(Mapping):
+class GeneCollection(Mapping):
+    def __init__(self, genes: dict[str, Gene]):
+        self.genes = genes
+
+    def __getitem__(self, geneid: str):
+        if geneid == "procyclic":
+            logger.warning("Specifying a life stage is deprecated.")
+            return self
+        return self.genes[geneid]
+
+    def __iter__(self):
+        return iter(self.genes)
+
+    def __len__(self):
+        return len(self.genes)
+
+
+class DataSource:
     def __init__(self, cache: Cache):
         self.cache = cache
 
     def __post_init__(self):
         self.localisation_ontology = self._load_localisation_ontology()
-        self.genes = self._load_gene_list()
+        self._gene_collection = GeneCollection(self._load_gene_list())
 
     def fetch_root_file(self, filename: str):
         raise NotImplementedError
@@ -341,11 +358,6 @@ class DataSource(Mapping):
         _populate(data, root=True)
         return ontology
 
-    def __getitem__(self, geneid: str):
-        return self.genes[geneid]
-
-    def __iter__(self):
-        return iter(self.genes)
-
-    def __len__(self):
-        return len(self.genes)
+    @property
+    def gene_collection(self):
+        return self._gene_collection

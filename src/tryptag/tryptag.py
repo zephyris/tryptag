@@ -26,43 +26,72 @@ STANDARD_DATASOURCES = {
 
 class TrypTag:
     """TrypTag abstract base class, this should never be instantiated."""
+
+    datasource: DataSource
+
     def __init__(
         self,
         verbose: bool = True,
         data_cache_path: str = "./_tryptag_cache",
         um_per_px: float = 6.5 / 63,
-        life_stages: list[str] | dict[str | Callable[[Cache], DataSource]] = [
-            "procyclic"
-        ]
+        dataset_name: str | None = "procyclic",
+        datasource: DataSource | None = None,
+        life_stages: list[str] | None = None,  # deprecated
     ):
         """Initialise TrypTag Base object.
 
         Keyword arguments:
         verbose -- print verbose output from accessing data (default `True`)
         data_cache_path -- the directory that will hold the downloaded TrypTag
-          data (default `./_tryptag_cache`, requires up to 8Tb)
+            data (default `./_tryptag_cache`, requires up to 8Tb)
         um_per_px -- physical pixel size / corrected magnification
-        life_stages -- list of life cycle stages covered by this dataset,
-          loading will default to first entry
+        dataset_name -- str, the name of a known dataset (currently
+            "procyclic" or "bloodstream"), default "procyclic"
+        data_source -- DataSource object to manually specify the data source.
+            `life_stage` needs to be set to `None` for this to have an effect.
+        life_stages -- deprecated.
         """
 
         # TODO: Make logging object-local instead of global
         if verbose:
             logger.setLevel(logging.DEBUG)
 
-        cache = Cache(data_cache_path)
-
-        self.datasources: dict[str, DataSource]
-        if isinstance(life_stages, list):
-            self.datasources = {
-                stage: STANDARD_DATASOURCES[stage](cache)
-                for stage in life_stages
-            }
-        else:
-            self.datasources = {
-                stage: ds(cache)
-                for stage, ds in life_stages.items()
-            }
+        if life_stages is not None:
+            logger.warning(
+                "The life_stages argument is deprecated. Please "
+                "either use dataset_name or explicitly specify a data source."
+            )
+            if len(life_stages) > 1:
+                logger.warning(
+                    "We only support specifying one life stage. Only using "
+                    "the first one as the data set name."
+                )
+            elif len(life_stages) == 0:
+                raise ValueError(
+                    "If specified, life_stages needs to have exactly one "
+                    "entry."
+                )
+            elif dataset_name is not None:
+                raise ValueError(
+                    "life_stages and dataset_name cannot be specified at the "
+                    "same time."
+                )
+            elif datasource is not None:
+                raise ValueError(
+                    "life_stages and data_source cannot be specified at the "
+                    "same time."
+                )
+            dataset_name = life_stages[0]
+        if dataset_name is not None and datasource is not None:
+            raise ValueError(
+                "life_stage and data_source cannot be specified at the same "
+                "time."
+            )
+        elif dataset_name is not None:
+            cache = Cache(data_cache_path)
+            self.datasource = STANDARD_DATASOURCES[dataset_name](cache)
+        elif datasource is not None:
+            self.datasource = datasource
 
         # image properties
         self.um_per_px = um_per_px
@@ -74,9 +103,9 @@ class TrypTag:
 
     @property
     def gene_list(self):
-        return self.datasources
+        return self.datasource.gene_collection
 
-    def worklist_all(self, life_stage: str = None) -> list[CellLine]:
+    def worklist_all(self, life_stage: str | None = None) -> list[CellLine]:
         """
         All `gene_id` and `terminus` combinations with data, as a `CellLine`
         object containing `life_stage`, `gene_id` and `terminus`.
@@ -84,51 +113,29 @@ class TrypTag:
         :param life_stage: Which life cycle stage to load data from, default
         is first entry in `self.life_stages`.
         """
-        if life_stage is None:
-            life_stage = next(iter(self.datasources))
+        if life_stage is not None:
+            logger.warning("life_stage is deprecated and ignored.")
 
         return [
             gene_entry[terminus]
-            for gene_id, gene_entry in self.gene_list[life_stage].items()
+            for gene_id, gene_entry in self.gene_list.items()
             for terminus in TERMINI
         ]
 
-        genes_termini = (
-            (gene_id, terminus)
-            for gene_id, gene_entry in self.gene_list[life_stage].items()
-            for terminus in TERMINI if terminus in gene_entry
-        )
-        return [
-            CellLine(
-                life_stage=life_stage,
-                gene_id=gene_id,
-                terminus=terminus,
-            ) for gene_id, terminus in
-            genes_termini
-        ]
-
-    def worklist_parental(self, life_stage: str = None) -> list:
+    def worklist_parental(self, life_stage: str | None = None) -> list:
         """
         All dummy `gene_id` and `terminus` combinations which correspond to
         parental cell line samples, as a `CellLine` object containing
         `life_stage`, `gene_id` and `terminus`.
         """
-        if life_stage is None:
-            life_stage = next(iter(self.datasources))
+        if life_stage is not None:
+            logger.warning("life_stage is deprecated and ignored.")
 
-        genes_termini = (
-            (gene_id, terminus)
-            for gene_id, gene_entry in self.gene_list[life_stage].items()
-            for terminus in TERMINI
-            if "wild-type" in gene_id and terminus in gene_entry
-        )
         return [
-            CellLine(
-                life_stage=life_stage,
-                gene_id=gene_id,
-                terminus=terminus,
-            ) for gene_id, terminus in
-            genes_termini
+            gene_entry[terminus]
+            for gene_id, gene_entry in self.gene_list.items()
+            for terminus in TERMINI
+            if "wild-type" in gene_id
         ]
 
     def localisation_search(
@@ -185,10 +192,6 @@ class TrypTag:
         :param query_term: Search query annotation term from the localisation
             ontology.
         """
-        # determine life stage
-        if life_stage is None:
-            life_stage = next(iter(self.datasources))
-
         # build list
         hits = []
         for cell_line in self.worklist_all(life_stage):
