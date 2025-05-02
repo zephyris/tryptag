@@ -63,7 +63,11 @@ class CellImage():
         # replace existing mask pixels with value 127
         phase_mask[phase_mask == 255] = 127
         # flood fill cell of interest to 255
-        phase_mask = skimage.morphology.flood_fill(phase_mask, fill_centre, 255)
+        phase_mask = skimage.morphology.flood_fill(
+            phase_mask,
+            (fill_centre[1], fill_centre[0]),
+            255,
+        )
         # append a copy (channels index 5), pixels if equal 127 ie. other cells
         phase_mask_othercells = 255*(phase_mask == 127)
 
