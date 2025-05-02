@@ -129,20 +129,14 @@ class Zenodo(DataSource):
         record_id = self.plate_index[plate]
         record = self._load_or_fetch_record(record_id)
 
-        zip_lock = self.cache.lock_file_name(f"zenodo_platezip_{plate}")
-        if not zip_lock.is_locked:
-            # The file isn't being downloaded in another thread
-            # TODO: There is a potential race condition here between the
-            # is_locked check above and acquiring the lock below!
-            with zip_lock:
+        with self.cache.lock_file_name(f"zenodo_platezip_{plate}"):
+            # Check if the plate already exists
+            # (it might have been downloaded in a different thread / process)
+            if not self.cache.file_path(plate).exists():
                 with self.cache.temporary_file(suffix=".zip", delete=True) as outfile:
                     record.files[f"{plate}_processed.zip"].download(outfile)
                     outfile.flush()
-                    # TODO: Check MD5
                     self.cache.extract_plate_zip(plate, outfile.name)
-        else:
-            with zip_lock:
-                pass
 
     def _get_plate_index(self):
         logger.debug("Loading plate index.")
