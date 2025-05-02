@@ -106,6 +106,11 @@ class TrypTag:
     def gene_list(self):
         return self.datasource.gene_collection
 
+    @property
+    def life_stages(self):
+        warnings.warn("life_stages is deprecated.")
+        return [None]
+
     def worklist_all(self, life_stage: str | None = None) -> list[CellLine]:
         """
         All `gene_id` and `terminus` combinations with data, as a `CellLine`
@@ -431,3 +436,10 @@ class TrypTag:
                 )
             ]
         return results
+
+    def cell_list(self, cell_line: CellLine):
+        return [
+            cell
+            for field in cell_line.fields.values()
+            for cell in field.cells.values()
+        ]

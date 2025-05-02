@@ -82,6 +82,18 @@ class Cell:
     def __hash__(self):
         return hash((self.field, self.index))
 
+    def __getitem__(self, key):
+        warnings.warn(
+            "Accessing cell properties via keys is deprecated."
+        )
+        if key == "field_index":
+            if self.field is not None:
+                return self.field.index
+            else:
+                return None
+        elif key == "cell_index":
+            return self.index
+
 
 class FieldDoesNotExistError(Exception):
     def __init__(
@@ -241,10 +253,10 @@ class CellLine:
         }
 
     def __getitem__(self, key):
+        warnings.warn(
+            "Accessing cell line properties via keys is deprecated."
+        )
         if key == "loc":
-            warnings.warn(
-                "Accessing localisation via the 'loc' key is deprecated."
-            )
             return [
                 {
                     "term": localisation.term,
@@ -252,6 +264,14 @@ class CellLine:
                 }
                 for localisation in self.localisation
             ]
+        elif key == "plate":
+            return self.plate
+        elif key == "well":
+            return self.well
+        elif key == "primer_f":
+            return self.forward_primer
+        elif key == "primer_r":
+            return self.reverse_primer
         raise KeyError(f"unknown key {key}")
 
 @dataclass
