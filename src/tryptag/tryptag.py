@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 from typing import Callable
+import warnings
 
 from tqdm.auto import tqdm
 
@@ -57,12 +58,12 @@ class TrypTag:
             logger.setLevel(logging.DEBUG)
 
         if life_stages is not None:
-            logger.warning(
+            warnings.warn(
                 "The life_stages argument is deprecated. Please "
                 "either use dataset_name or explicitly specify a data source."
             )
             if len(life_stages) > 1:
-                logger.warning(
+                warnings.warn(
                     "We only support specifying one life stage. Only using "
                     "the first one as the data set name."
                 )
@@ -114,7 +115,7 @@ class TrypTag:
         is first entry in `self.life_stages`.
         """
         if life_stage is not None:
-            logger.warning("life_stage is deprecated and ignored.")
+            warnings.warn("life_stage is deprecated and ignored.")
 
         return [
             gene_entry[terminus]
@@ -129,7 +130,7 @@ class TrypTag:
         `life_stage`, `gene_id` and `terminus`.
         """
         if life_stage is not None:
-            logger.warning("life_stage is deprecated and ignored.")
+            warnings.warn("life_stage is deprecated and ignored.")
 
         return [
             gene_entry[terminus]
@@ -295,6 +296,7 @@ class TrypTag:
         """
         DEPRECATED - use `open_cell` instead.
         """
+        warnings.warn("open_cell_custom is deprecated. Use open_cell instead.")
         return self.open_cell(*args, **kwargs)
 
     def _list_analysis_worker(

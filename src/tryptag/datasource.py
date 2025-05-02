@@ -8,6 +8,7 @@ import json
 import logging
 import pathlib
 from typing import Literal
+import warnings
 
 from .cache import Cache, FileTypes, FILE_TYPE_ENDINGS, FILE_PATTERN
 
@@ -141,7 +142,7 @@ class Field:
 
 class CellLine:
     gene: Gene = None
-    gene_id: str = ""
+    _gene_id: str = ""
     terminus: Literal["N", "C"]
     status: CellLineStatus
     plate: str
@@ -160,7 +161,7 @@ class CellLine:
         terminus: str
     ):
         self._initialised = False
-        self.gene_id = gene_id
+        self._gene_id = gene_id
         terminus = terminus.upper()
         if terminus not in ["N", "C"]:
             raise ValueError("terminus needs to be either 'N' or 'C'")
@@ -169,6 +170,12 @@ class CellLine:
     @property
     def initialised(self):
         return self._initialised
+    
+    @property
+    def gene_id(self):
+        if self.gene is not None:
+            return self.gene.id
+        return self._gene_id
 
     @staticmethod
     def from_data(
@@ -233,6 +240,19 @@ class CellLine:
             for index in sorted(indices)
         }
 
+    def __getitem__(self, key):
+        if key == "loc":
+            warnings.warn(
+                "Accessing localisation via the 'loc' key is deprecated."
+            )
+            return [
+                {
+                    "term": localisation.term,
+                    "modifiers": list(localisation.modifiers),
+                }
+                for localisation in self.localisation
+            ]
+        raise KeyError(f"unknown key {key}")
 
 @dataclass
 class Gene(Mapping):
@@ -262,8 +282,10 @@ class GeneCollection(Mapping):
         self.genes = genes
 
     def __getitem__(self, geneid: str):
-        if geneid == "procyclic":
-            logger.warning("Specifying a life stage is deprecated.")
+        if geneid == "procyclic" or geneid is None:
+            warnings.warn(
+                "Specifying a life stage is deprecated."
+            )
             return self
         return self.genes[geneid]
 
