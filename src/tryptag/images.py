@@ -1,5 +1,6 @@
 from __future__ import annotations
 import itertools
+import logging
 import weakref
 
 import numpy
@@ -7,6 +8,8 @@ import skimage
 
 from .cache import FileTypes
 from .datasource import Field, Cell, CellLine, DataSource
+
+logger = logging.getLogger("tryptag.images")
 
 
 class CellImage():
@@ -40,11 +43,20 @@ class CellImage():
         angle: float | None = None,
         custom_field_image: FieldImage | None = None
     ):
+        logger.debug(f"Creating cell image for {cell}.")
+
         self.rotated = rotated
+
         field_image = FieldImage.from_field(
             cell.field,
             custom_field_image=custom_field_image
         )
+        # Hold strong reference to FieldImage as long as CellImage exists.
+        # This way FieldImage._CACHE will store a weak reference to it
+        # and subsequent CellImages from the same FieldImage can use
+        # a cached version.
+        self.field_image = field_image
+
         self.cell = cell
         if fill_centre is None:
             fill_centre = cell.wand
@@ -252,7 +264,7 @@ class FieldImage():
 
             if cell_line.initialised:
                 self.field = cell_line.fields[field_index]
-    
+
     @property
     def field_index(self):
         if self.field is not None:
@@ -349,14 +361,22 @@ class FieldImage():
         if custom_field_image is not None:
             self.update(custom_field_image)
 
+        # Hold a strong reference to this object in the class.
+        # Makes sure that FieldImage._CACHE has the weak reference
+        # for subsequent accesses to this Field Image.
+        FieldImage._last_field_image = self
+
     @staticmethod
     def from_field(
         field: Field,
         custom_field_image: FieldImage | None = None,
     ):
+        logger.debug(f"Loading image for field {field}...")
         try:
             field_image = FieldImage._CACHE[(field, custom_field_image)]
+            logger.debug("...from cache.")
         except KeyError:
+            logger.debug("...from file.")
             field_image = FieldImage()
             field_image.field = field
             field_image._process(

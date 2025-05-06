@@ -18,7 +18,7 @@ from annotations import (
     OntologyAnnotationCollection,
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tryptag.datasource")
 
 HEADERS_GENE = [
     "Gene ID",
@@ -93,6 +93,9 @@ class Cell:
                 return None
         elif key == "cell_index":
             return self.index
+
+    def __str__(self):
+        return f"Cell from {self.field}"
 
 
 class FieldDoesNotExistError(Exception):
@@ -183,7 +186,7 @@ class CellLine:
     @property
     def initialised(self):
         return self._initialised
-    
+
     @property
     def gene_id(self):
         if self.gene is not None:
@@ -229,9 +232,11 @@ class CellLine:
             (self.datasource, self.gene.id, self.terminus, self.life_stage))
 
     def __repr__(self):
+        gene_id = self.gene.id if self.gene is not None else self.gene_id
         return (
-            f"gene_id = {self.gene.id if self.gene is not None else self.gene_id} "
-            f"terminus = {self.terminus} life_stage = {self.life_stage}"
+            f"gene_id = {gene_id} "
+            f"terminus = {self.terminus} "
+            f"life_stage = {self.life_stage}"
         )
 
     def filename_stem(self):
@@ -276,6 +281,7 @@ class CellLine:
         elif key == "primer_r":
             return self.reverse_primer
         raise KeyError(f"unknown key {key}")
+
 
 @dataclass
 class Gene(Mapping):
@@ -335,6 +341,7 @@ class DataSource:
         filename: str,
         return_file_object: bool = True,
     ):
+        logger.debug(f"Loading root file {filename}")
         with self.cache.lock_file_name(filename):
             return self.cache.load_file(
                 filename,
@@ -351,6 +358,7 @@ class DataSource:
         filename: str,
         return_file_object: bool = True
     ):
+        logger.debug(f"Loading file {filename} from plate {plate}.")
         with self.cache.lock_file_name(f"{plate}_{filename}"):
             return self.cache.load_file(
                 filename,
@@ -397,6 +405,7 @@ class DataSource:
         return genes
 
     def _load_localisation_ontology(self):
+        logger.debug("Loading ontology.")
         ontology = Ontology()
 
         def _populate(

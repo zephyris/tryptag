@@ -10,7 +10,7 @@ from .datasource import CellLine, CellLineStatus, DataSource
 from .zenodo import Zenodo
 from .images import FieldImage, CellImage
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tryptag")
 
 STANDARD_DATASOURCES = {
     "procyclic": lambda cache: Zenodo(cache, master_record_id=6862289),
@@ -25,7 +25,7 @@ class TrypTag:
 
     def __init__(
         self,
-        verbose: bool = True,
+        verbose: bool = False,
         data_cache_path: str = "./_tryptag_cache",
         um_per_px: float = 6.5 / 63,
         dataset_name: str | None = "procyclic",
@@ -46,7 +46,6 @@ class TrypTag:
         life_stages -- deprecated.
         """
 
-        # TODO: Make logging object-local instead of global
         if verbose:
             logger.setLevel(logging.DEBUG)
 
@@ -82,9 +81,16 @@ class TrypTag:
                 "time."
             )
         elif dataset_name is not None:
+            logger.debug(
+                f"Initialising cache and standard data source {dataset_name}."
+            )
             cache = Cache(data_cache_path)
             self.datasource = STANDARD_DATASOURCES[dataset_name](cache)
         elif datasource is not None:
+            logger.debug(
+                "Initialising from given data source (assuming cache has "
+                "been initialised)."
+            )
             self.datasource = datasource
 
         # image properties
@@ -190,7 +196,8 @@ class TrypTag:
     @property
     def localisation_ontology(self):
         ontology = {}
-        for name, entry in self.datasource.localisation_ontology.entries.items():
+        entries = self.datasource.localisation_ontology.entries
+        for name, entry in entries.items():
             oentry = {}
             if entry.synonyms is not None:
                 oentry["synonyms"] = list(entry.synonyms)
@@ -255,6 +262,7 @@ class TrypTag:
         """
         if not cell_line.initialised:
             cell_line = self.gene_list[cell_line.gene_id][cell_line.terminus]
+        logger.debug(f"Opening field for cell line {cell_line}")
 
         return FieldImage.from_field(
             cell_line.fields[field_index],
@@ -310,6 +318,9 @@ class TrypTag:
 
         field = cell_line.fields[field_index]
         cell = field.cells[cell_index]
+        logger.debug(f"Opening field for cell {cell_line} field {field} "
+                     f"cell {cell}.")
+
         return CellImage(
             cell,
             rotated=rotate,
@@ -390,10 +401,10 @@ class TrypTag:
         import concurrent.futures
         import multiprocessing
 
-        logger.info("Analysing worklist")
-
         # deduplicate work_list
         dedup_work_list = set(work_list)
+
+        logger.debug(f"Analysing worklist with {len(dedup_work_list)} entries")
 
         # get number of workers, default to number of cpus
         if workers is None:
@@ -402,16 +413,16 @@ class TrypTag:
         if multiprocess_mode is None:
             # run in a single thread, still use the ThreadPoolExecutor since
             # that's equivalent
-            logger.info("Single process")
+            logger.debug("Single process")
             Executor = concurrent.futures.ThreadPoolExecutor
             workers = 1
         elif multiprocess_mode == "process":
             # setup executor as a process pool
-            logger.info(f"Parallel processes with {workers} workers")
+            logger.debug(f"Parallel processes with {workers} workers")
             Executor = concurrent.futures.ProcessPoolExecutor
         elif multiprocess_mode == "thread":
             # setup executor as a thread pool
-            logger.info("Parallel threads with", workers, "workers")
+            logger.debug("Parallel threads with", workers, "workers")
             Executor = concurrent.futures.ThreadPoolExecutor
         else:
             raise ValueError(f"Unknown multiprocess_mode '{multiprocess_mode}")
@@ -424,14 +435,16 @@ class TrypTag:
                     analysis_function=analysis_function,
                     threading_mode=multiprocess_mode == "thread"
                 ) for cell_line in dedup_work_list]
-            results = [
-                future.result()
-                for future in tqdm(
-                    concurrent.futures.as_completed(futures),
-                    total=len(futures),
-                    smoothing=0
-                )
-            ]
+            results = []
+            total = len(futures)
+            for nr, future in enumerate(tqdm(
+                concurrent.futures.as_completed(futures),
+                total=total,
+                smoothing=0,
+                disable=logger.getEffectiveLevel() != logging.INFO,
+            )):
+                logger.debug(f"{nr + 1} / {total} done.")
+                results.append(future.result())
         return results
 
     def cell_list(self, cell_line: CellLine):

@@ -12,7 +12,7 @@ from tryptag.datasource import DataSource
 ZENODO_API_ROOT = "https://zenodo.org/api/records"
 DOWNLOAD_MAX_TRIES = 3
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("tryptag.datasource.zenodo")
 
 
 class ZenodoFile:
@@ -31,10 +31,8 @@ class ZenodoFile:
             md5.update(line + b"\n")
             yield line
 
-        print(self.checksum)
-        print(md5.hexdigest())
-
     def download(self, outfile: io.BufferedIOBase):
+        logger.debug(f"Downloading {self.name} from URL {self.url}.")
         for try_nr in range(DOWNLOAD_MAX_TRIES):
             r = requests.get(self.url, stream=True)
             total_size = int(r.headers.get("content-length", 0))
@@ -42,14 +40,32 @@ class ZenodoFile:
 
             md5 = hashlib.md5()
 
+            def log_progress(chunks):
+                if total_size == 0:
+                    for chunk in chunks:
+                        yield chunk
+                else:
+                    progress = 0
+                    delta = 0
+                    for chunk in chunks:
+                        delta += block_size
+                        progress += block_size
+                        delta_percentage = 100 * (delta / total_size)
+                        if delta_percentage >= 10:
+                            logger.debug(f"{self.name}: {progress} / {total_size}")
+                            delta = 0
+                        yield chunk
+                    logger.debug(f"{self.name}: {total_size} / {total_size}")
+
             with tqdm(
                 desc=f"Downloading {self.name}",
                 total=total_size,
                 unit="B",
                 unit_scale=True,
-                disable=logger.getEffectiveLevel() < logging.INFO,
+                disable=logger.getEffectiveLevel() != logging.INFO,
             ) as progress_bar:
-                for chunk in r.iter_content(block_size):
+                progress_bar.n
+                for chunk in log_progress(r.iter_content(block_size)):
                     progress_bar.update(len(chunk))
                     md5.update(chunk)
                     outfile.write(chunk)
@@ -73,6 +89,7 @@ class ZenodoRecord:
 
     @staticmethod
     def fetch(record_id: int):
+        logger.debug("Fetching record {record_id}.")
         r = requests.get(
             f"{ZENODO_API_ROOT}/{record_id}/versions/latest"
         )
@@ -80,10 +97,12 @@ class ZenodoRecord:
 
     @staticmethod
     def from_file(json_file: typing.IO):
+        logger.debug(f"Opening record from file {json_file.name}.")
         with json_file:
             return ZenodoRecord(json.load(json_file))
 
     def to_file(self, outfile: typing.IO):
+        logger.debug(f"Saving record to file {outfile.name}")
         with outfile:
             json.dump(self._original_data, outfile)
 
@@ -100,6 +119,7 @@ class Zenodo(DataSource):
         self.__post_init__()
 
     def _load_or_fetch_record(self, record_id: int):
+        logger.debug(f"Loading record {record_id}.")
         with self.cache.lock_file_name(f"zenodo_record_{record_id}"):
             def genfile_cb():
                 path = self.cache.file_path(str(record_id), "_zenodo")
@@ -117,15 +137,17 @@ class Zenodo(DataSource):
             )
 
     def fetch_root_file(self, filename: str):
+        logger.debug(f"Fetching root file {filename}.")
         zfile = self.master_record.files[filename]
         with open(self.cache.file_path(filename), "wb") as outfile:
             zfile.download(outfile)
 
-    def fetch_plate_file(self, plate, _):
+    def fetch_plate_file(self, plate: str, file: str):
+        logger.debug(f"Fetching file {file} from plate {plate}.")
         self._fetch_plate(plate)
 
     def _fetch_plate(self, plate: str):
-        logger.debug("Fetching plate ")
+        logger.debug(f"Fetching plate {plate}.")
         record_id = self.plate_index[plate]
         record = self._load_or_fetch_record(record_id)
 
@@ -133,7 +155,8 @@ class Zenodo(DataSource):
             # Check if the plate already exists
             # (it might have been downloaded in a different thread / process)
             if not self.cache.file_path(plate).exists():
-                with self.cache.temporary_file(suffix=".zip", delete=True) as outfile:
+                tmpfile = self.cache.temporary_file(suffix=".zip", delete=True)
+                with tmpfile as outfile:
                     record.files[f"{plate}_processed.zip"].download(outfile)
                     outfile.flush()
                     self.cache.extract_plate_zip(plate, outfile.name)

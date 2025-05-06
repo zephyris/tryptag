@@ -9,6 +9,8 @@ import zipfile
 from filelock import FileLock
 from tqdm import tqdm
 
+logger = logging.getLogger("tryptag.cache")
+
 
 class FileTypes(Enum):
     CELL_ROIS = 0
@@ -22,9 +24,6 @@ FILE_TYPE_ENDINGS = {
     FileTypes.IMAGE: ".tif",
 }
 FILE_PATTERN = FILE_TYPE_ENDINGS[FileTypes.CELL_ROIS]
-
-logger = logging.getLogger(__name__)
-
 
 class FileNotCachedError(Exception):
     def __init__(self, filename: str, plate: str | None = None, *args):
@@ -49,6 +48,7 @@ class Cache:
         return_file_object: bool = True,
     ):
         local_path = self.file_path(filename, plate)
+        logger.debug(f"Trying to load file {local_path}.")
         if not local_path.is_file():
             if genfile_cb is not None:
                 logger.debug(
@@ -97,6 +97,7 @@ class Cache:
         return FileLock(path / item)
 
     def extract_plate_zip(self, plate: str, zipfilepath: pathlib.Path):
+        logger.debug(f"Extracting zip file {zipfilepath} for plate {plate}.")
         with zipfile.ZipFile(zipfilepath) as zip:
             fields = [
                 pathlib.Path(fname.replace(FILE_PATTERN, ""))
@@ -114,7 +115,7 @@ class Cache:
             for field in tqdm(
                 fields,
                 desc=f"Extracting {plate}",
-                disable=logger.getEffectiveLevel() < logging.INFO,
+                disable=logger.getEffectiveLevel() != logging.INFO,
             ):
                 for filetype in FILE_TYPE_ENDINGS.values():
                     zippath = pathlib.Path(str(field) + filetype)
@@ -123,6 +124,8 @@ class Cache:
                     filename = str(zippath.relative_to(zippath.parent))
 
                     zipinfo.filename = str(self.file_path(filename, plate))
+                    logger.debug(f"Extracting file {zippath} to "
+                                 f"{zipinfo.filename}.")
                     zip.extract(zipinfo)
 
     def glob_files(self, pattern: str):
