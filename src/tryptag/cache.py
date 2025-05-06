@@ -1,7 +1,7 @@
-from enum import Enum
 import logging
 import pathlib
 import shutil
+import sys
 import tempfile
 from typing import Callable
 import zipfile
@@ -9,21 +9,22 @@ import zipfile
 from filelock import FileLock
 from tqdm import tqdm
 
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from backports.strenum import StrEnum
+
 logger = logging.getLogger("tryptag.cache")
 
 
-class FileTypes(Enum):
-    CELL_ROIS = 0
-    THRESHOLDED = 1
-    IMAGE = 2
+class FileTypes(StrEnum):
+    CELL_ROIS = "_roisCells.txt"
+    THRESHOLDED = "_thr.tif"
+    IMAGE = ".tif"
 
 
-FILE_TYPE_ENDINGS = {
-    FileTypes.CELL_ROIS: "_roisCells.txt",
-    FileTypes.THRESHOLDED: "_thr.tif",
-    FileTypes.IMAGE: ".tif",
-}
-FILE_PATTERN = FILE_TYPE_ENDINGS[FileTypes.CELL_ROIS]
+FILE_PATTERN = FileTypes.CELL_ROIS
+
 
 class FileNotCachedError(Exception):
     def __init__(self, filename: str, plate: str | None = None, *args):
@@ -117,7 +118,7 @@ class Cache:
                 desc=f"Extracting {plate}",
                 disable=logger.getEffectiveLevel() != logging.INFO,
             ):
-                for filetype in FILE_TYPE_ENDINGS.values():
+                for filetype in FileTypes:
                     zippath = pathlib.Path(str(field) + filetype)
                     zipinfo = zip.getinfo(str(zippath))
 

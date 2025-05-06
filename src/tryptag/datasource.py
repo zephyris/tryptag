@@ -2,21 +2,26 @@ from __future__ import annotations
 from collections.abc import Mapping
 import csv
 from dataclasses import dataclass
-import enum
 from functools import cached_property
 import json
 import logging
 import pathlib
+import sys
 from typing import Literal
 import warnings
 
-from .cache import Cache, FileTypes, FILE_TYPE_ENDINGS, FILE_PATTERN
+from .cache import Cache, FileTypes, FILE_PATTERN
 
 from annotations import (
     Ontology,
     OntologyEntry,
     OntologyAnnotationCollection,
 )
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from backports.strenum import StrEnum
 
 logger = logging.getLogger("tryptag.datasource")
 
@@ -37,17 +42,10 @@ HEADERS_CELL_LINE = [
 TERMINI = ["C", "N"]
 
 
-class CellLineStatus(enum.Enum):
-    NOT_ATTEMPTED = 0
-    ATTEMPTED = 1
-    GENERATED = 2
-
-
-CELL_LINE_STATUS_MAP = {
-    "not attempted": CellLineStatus.NOT_ATTEMPTED,
-    "tagging attempted": CellLineStatus.ATTEMPTED,
-    "cell line generated": CellLineStatus.GENERATED,
-}
+class CellLineStatus(StrEnum):
+    NOT_ATTEMPTED = "not attempted"
+    ATTEMPTED = "tagging attempted"
+    GENERATED = "cell line generated"
 
 
 class Cell:
@@ -134,8 +132,7 @@ class Field:
 
     def filename(self, file_type: FileTypes):
         return (
-            f"{self.cell_line.filename_stem()}{self.index+1}"
-            f"{FILE_TYPE_ENDINGS[file_type]}"
+            f"{self.cell_line.filename_stem()}{self.index+1}{file_type}"
         )
 
     def exists(self) -> bool:
@@ -212,7 +209,7 @@ class CellLine:
     ):
         self = CellLine("", terminus)
         self.terminus = terminus
-        self.status = CELL_LINE_STATUS_MAP[status]
+        self.status = CellLineStatus(status)
         if self.status != CellLineStatus.NOT_ATTEMPTED:
             self.plate, self.well = plate_and_well.split(" ")
         else:
