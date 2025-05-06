@@ -123,10 +123,11 @@ class Field:
             cell_line.plate,
             self.filename(FileTypes.CELL_ROIS)
         )
-        # Skip header line
-        next(cell_file)
-        cell_list = [Cell.from_line(self, line) for line in cell_file]
-        self.cells = {cell.index: cell for cell in cell_list}
+        with cell_file:
+            # Skip header line
+            next(cell_file)
+            cell_list = [Cell.from_line(self, line) for line in cell_file]
+            self.cells = {cell.index: cell for cell in cell_list}
 
     def filename(self, file_type: FileTypes):
         return (
