@@ -15,6 +15,10 @@ DOWNLOAD_MAX_TRIES = 3
 logger = logging.getLogger("tryptag.datasource.zenodo")
 
 
+class ZenodoFileChecksumError(Exception):
+    pass
+
+
 class ZenodoFile:
     def __init__(self, data: dict):
         self.id: str = data["id"]
@@ -30,6 +34,9 @@ class ZenodoFile:
         for line in r.iter_lines():
             md5.update(line + b"\n")
             yield line
+
+        if md5.hexdigest() != self.checksum:
+            raise ZenodoFileChecksumError
 
     def download(self, outfile: io.BufferedIOBase):
         logger.debug(f"Downloading {self.name} from URL {self.url}.")
