@@ -43,6 +43,21 @@ class CellImage():
         angle: float | None = None,
         custom_field_image: FieldImage | None = None
     ):
+        """
+        Initialise a CellImage object.
+
+        :param cell: the Cell metadata object
+        :param rotated: bool, whether the `CellImage` should be rotated such
+            that the cell is displayed in the canonical way.
+        :param width: int, width the image should be cropped to
+        :param fill_centre: xy coordinate of the flood fill centre for the
+            mask. This needs to be within the cell.
+        :param crop_centre: xy coordinate of the centre of the resulting image
+        :param angle: float, angle the cell subtends with the x axis
+        :param custom_field_image: `FieldImage` or None, if given, the raw
+            image data is taken from this `FieldImage` rather than loaded from
+            the `Field`. Allows pre-processing of the images.
+        """
         logger.debug(f"Creating cell image for {cell}.")
 
         self.rotated = rotated
@@ -216,7 +231,7 @@ class CellImage():
 
 class FieldImage():
     """
-    FieldImage object holding information on a TrypTag image.
+    FieldImage object holding a TrypTag image belonging to a CellLine.
     """
     IMAGE_MEMBERS = [
         "phase",
@@ -251,6 +266,21 @@ class FieldImage():
         cell_line: CellLine | None = None,
         field_index: int | None = None,
     ):
+        """
+        Initialise a new FieldImage object.
+
+        Note that this does not load data from the data source. All parameters
+        are optional. This can be used to create a custom `FieldImage`.
+
+        :param phase: phase microscopy channel
+        :param mng: green (tag) fluorescence channel
+        :param dna: magenta (DNA stain) fluorescence channel
+        :param phase_mask: thresholded mask image for cell bodies
+        :param dna_mask: thresholded mask image for DNA (nucleus and
+            kinetoplast)
+        :param cell_line: CellLine object this `FieldImage` belongs to
+        :param field_index: int, index of the `Field` in the `CellLine`
+        """
         self.phase = phase
         self.mng = mng
         self.dna = dna
@@ -267,6 +297,7 @@ class FieldImage():
 
     @property
     def field_index(self):
+        """Index of the `Field` in the `CellLine`."""
         if self.field is not None:
             return self.field.index
         return self._field_index
@@ -371,6 +402,16 @@ class FieldImage():
         field: Field,
         custom_field_image: FieldImage | None = None,
     ):
+        """
+        Create a `FieldImage` from a given `Field` object.
+
+        Uses channels from `custom_field_image` if given. This allows custom
+        image manipulation before processing.
+
+        :param field: `Field` metadata object
+        :param custom_field_image: `FieldImage` with any custom channels
+        :return: new `FieldImage` object
+        """
         logger.debug(f"Loading image for field {field}...")
         try:
             field_image = FieldImage._CACHE[(field, custom_field_image)]

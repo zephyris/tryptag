@@ -337,7 +337,7 @@ class TrypTag:
 
     def analyse_list(
         self,
-        work_list: WorkList,
+        work_list: WorkList | list[CellLine],
         analysis_function: Callable,
         workers: int | None = None,
         multiprocess_mode: Literal["process", "thread"] | None = "process"
@@ -345,7 +345,7 @@ class TrypTag:
         """
         Simple handler for parallel analysis of a `work_list`.
 
-        :param work_list: List of CellLine objects, defining each `life_stage,
+        :param work_list: List of CellLine objects, defining each
             `gene_id` and `terminus` combination to analyse.
         :param analysis_function: Function name to use for analysis.
             `analysis_function` should take exactly two arguments, `tryptag`
@@ -361,7 +361,9 @@ class TrypTag:
             analysis_function_return}`. These may be in a different order to
             `work_list`.
         """
-        return work_list.process(
+        if not isinstance(work_list, WorkList):
+            work_list = WorkList(self, work_list)
+        return work_list.analysis(
             analysis_function,
             workers,
             multiprocess_mode

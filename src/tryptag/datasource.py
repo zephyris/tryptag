@@ -25,30 +25,44 @@ else:
 
 logger = logging.getLogger("tryptag.datasource")
 
-HEADERS_GENE = [
-    "Gene ID",
-    "Gene aliases",
-]
-HEADERS_CELL_LINE = [
-    "status",
-    "plate and well",
-    "primer F",
-    "primer R",
-    "localisation",
-    "fainter than parental",
-    "classified as faint",
-]
 
-TERMINI = ["C", "N"]
+class HeadersGene(StrEnum):
+    """Column headers that document gene properties in localisations.tsv"""
+
+    GENE_ID = "Gene ID"
+    GENE_ALIASES = "Gene aliases"
+
+
+class HeadersCellLine(StrEnum):
+    """Column headers that document cell line properties in
+    localisations.tsv"""
+    STATUS = "status"
+    PLATE_AND_WELL = "plate and well"
+    PRIMER_F = "primer F"
+    PRIMER_R = "primer R"
+    LOCALISATION = "localisation"
+    FAINTER_THAN_PARENTAL = "fainter than parental"
+    CLASSIFIED_FAINT = "classified as faint"
 
 
 class CellLineStatus(StrEnum):
+    """Status codes for the cell line generated in the TrypTag project"""
+
     NOT_ATTEMPTED = "not attempted"
+    """Cell lines that haven't been attempted."""
+
     ATTEMPTED = "tagging attempted"
+    """Cell lines that have been attempted but weren't successfully
+    generated."""
+
     GENERATED = "cell line generated"
+    """Cell lines that were successfully generated and imaged."""
 
 
 class Cell:
+    """Class describing metadata for a single cell in a `CellLine`'s
+    `Field`."""
+
     def __init__(
         self,
         field: Field,
@@ -58,6 +72,19 @@ class Cell:
         extent: tuple[float, float],
         angle: float
     ):
+        """
+        Initialise a `Cell`.
+
+        :param field: `Field` in which the `Cell` resides.
+        :param index: int, Index of the cell in the field.
+        :param wand: tuple[int, int], xy position that's guaranteed to be in
+            the cell (for flood filling).
+        :param centre: tuple[float, float], xy position of the centre of the
+            cell
+        :param extent: tuple[float, float], width and height of the cell
+        :param angle: float, angle the cell subtends with the x axis, taking
+            into account the cell anterior-posterior orientation
+        """
         self.field = field
         self.index = index
         self.wand = wand
@@ -67,6 +94,10 @@ class Cell:
 
     @staticmethod
     def from_line(field: Field, line: str):
+        """
+        Initialise a `Cell` from a line in the cell ROIs file for the given
+        `Field`.
+        """
         parts = line.split()
         return Cell(
             field,
@@ -107,12 +138,21 @@ class FieldDoesNotExistError(Exception):
 
 
 class Field:
+    """Class describing metadata for a `CellLine`'s field of view."""
     def __init__(
         self,
         cell_line: CellLine,
         index: int,
         datasource: DataSource,
     ):
+        """
+        Initialise a `Field` object.
+
+        :param cell_line`: the cell line the field of view shows
+        :param index: int, the index of the field of view
+        :param datasource: DataSource, the data source the main `TrypTag`
+            object is using (needed for data access).
+        """
         self.cell_line = cell_line
         self.index = index
         self.datasource = datasource
@@ -131,6 +171,7 @@ class Field:
             self.cells = {cell.index: cell for cell in cell_list}
 
     def filename(self, file_type: FileTypes):
+        """Return the name of the given file type for this field of view."""
         return (
             f"{self.cell_line.filename_stem()}{self.index+1}{file_type}"
         )
@@ -154,6 +195,7 @@ class Field:
 
 
 class CellLine:
+    """Class describing a cell line within the TrypTag project."""
     gene: Gene = None
     _gene_id: str = ""
     terminus: Literal["N", "C"]
@@ -173,6 +215,16 @@ class CellLine:
         gene_id: str,
         terminus: str
     ):
+        """
+        Create a `CellLine` object.
+
+        Note that this constructor only fills the `gene_id` and the
+        `terminus`. It does not perform data lookup.
+
+        :param gene_id: str, Gene ID of the cell line.
+        :param terminus: str, terminus of the tag on the cell line (either "C"
+            or "N")
+        """
         self._initialised = False
         self._gene_id = gene_id
         terminus = terminus.upper()
@@ -182,22 +234,27 @@ class CellLine:
 
     @property
     def initialised(self):
+        """Whether the `CellLine` object has been populated with data from the
+        data source."""
         return self._initialised
 
     @property
     def gene_id(self):
+        """The Gene ID of the cell line."""
         if self.gene is not None:
             return self.gene.id
         return self._gene_id
 
     @property
     def is_parental(self):
+        """Whether the `CellLine` stems from a parental tagging attempt (i.e.
+        not tagging a specific protein)."""
         return "wild-type" in self.gene_id
 
     @staticmethod
     def from_data(
         terminus: Literal["N", "C"],
-        status: str,
+        status: CellLineStatus,
         plate_and_well: str,
         forward_primer: str,
         reverse_primer: str,
@@ -207,6 +264,27 @@ class CellLine:
         datasource: DataSource,
         ontology: Ontology,
     ):
+        """Initialise a `CellLine` object and populate with the given data.
+
+        :param terminus: the tagging terminus of the cell line (either "C" or
+            "N")
+        :param status: the status of the cell line (has to be one of the
+            entries in `CellLineStatus`)
+        :param plate_and_well: str, the plate and well the cell line was
+            generated in (separated by a space)
+        :param forward_primer: str, the sequence of the forward primer
+        :param reverse_primer: str, the sequence of the reverse primer
+        :param localisation: str, the localisation annotation string in the
+            form "term1[mod1,mod2],term2[mod3,mod4]"
+        :param fainter_than_parental: bool, whether the fluorescence signal
+            was fainter than the parental cell lines
+        :param classifed_faint: bool, whether the fluorescence signal was
+            classified as faint
+        :param datasource: `DataSource, the data source the `TrypTag` instance
+            is using
+        :param ontology: `Ontology`, the localisation annotation ontology the
+            annotation terms are derived from
+        """
         self = CellLine("", terminus)
         self.terminus = terminus
         self.status = CellLineStatus(status)
@@ -245,6 +323,7 @@ class CellLine:
 
     @cached_property
     def fields(self) -> dict[int, Field]:
+        """The `Field`s of view belonging to this cell line."""
         if self.status != CellLineStatus.GENERATED:
             return {}
         stem = self.filename_stem()
@@ -286,6 +365,8 @@ class CellLine:
 
 @dataclass
 class Gene(Mapping):
+    """Class describing the metadata for a gene that was part of the TrypTag
+    project."""
     id: str
     aliases: str
     N: CellLine
@@ -308,7 +389,13 @@ class Gene(Mapping):
 
 
 class GeneCollection(Mapping):
+    """Collection holding the `Gene` objects."""
     def __init__(self, genes: dict[str, Gene]):
+        """
+        Initialise a `GeneCollection` object.
+
+        :param genes: dict mapping gene IDs with `Gene` objects.
+        """
         self.genes = genes
 
     def __getitem__(self, geneid: str) -> Gene:
@@ -327,14 +414,39 @@ class GeneCollection(Mapping):
 
 
 class DataSource:
+    """The abstract data source class allowing the `TrypTag` class to fetch
+    data."""
     def __init__(self, cache: Cache):
+        """
+        Initialise the `DataSource`.
+
+        Please note that this is the abstract base class - this constructor
+        should not be called on its own. When subclassing, this constructor
+        needs to be called before anything else in the subclass' consttructor.
+
+        :param cache: the file system cache object we'll be using
+        """
         self.cache = cache
 
     def __post_init__(self):
+        """Post init function of the `DataSource` base class.
+
+        This needs to be called at the end of a subclass's constructor.
+        """
         self.localisation_ontology = self._load_localisation_ontology()
         self._gene_collection = GeneCollection(self._load_gene_list())
 
-    def fetch_root_file(self, filename: str):
+    def fetch_root_file(self, filename: str) -> None:
+        """
+        Low-level fetching of a root (non-plate) file.
+
+        Fetches the file with the given file name from the data source and
+        stores it at the path given by `self.cache.file_path(filename)`.
+
+        This method needs to be implemented in a subclass.
+
+        :param filename: str, name of the file to be fetched
+        """
         raise NotImplementedError
 
     def load_root_file(
@@ -342,6 +454,16 @@ class DataSource:
         filename: str,
         return_file_object: bool = True,
     ):
+        """
+        Load the given root (non-plate) file.
+
+        Tries to load it from the cache first and will revert back to
+        `fetch_root_file` if it cannot be found in the cache.
+
+        :param filename: str, name of the file to be loaded
+        :param return_file_object: bool (default `True`), whether to return an
+            opened file object. Returns the path to the local file if `False.
+        """
         logger.debug(f"Loading root file {filename}")
         with self.cache.lock_file_name(filename):
             return self.cache.load_file(
@@ -350,7 +472,18 @@ class DataSource:
                 return_file_object=return_file_object,
             )
 
-    def fetch_plate_file(self, plate: str, filename: str):
+    def fetch_plate_file(self, plate: str, filename: str) -> None:
+        """
+        Low-level fetching of a plate file.
+
+        Fetches the file with the given file name from the data source and
+        stores it at the path given by `self.cache.file_path(filename, plate)`.
+
+        This method needs to be implemented in a subclass.
+
+        :param plate: str, name of the plate the file is included in
+        :param filename: str, name of the file to be fetched
+        """
         raise NotImplementedError
 
     def load_plate_file(
@@ -359,6 +492,17 @@ class DataSource:
         filename: str,
         return_file_object: bool = True
     ):
+        """
+        Load the given plate file.
+
+        Tries to load it from the cache first and will revert back to
+        `fetch_root_file` if it cannot be found in the cache.
+
+        :param plate: str, name of the plate the file is included in
+        :param filename: str, name of the file to be loaded
+        :param return_file_object: bool (default `True`), whether to return an
+            opened file object. Returns the path to the local file if `False.
+        """
         logger.debug(f"Loading file {filename} from plate {plate}.")
         with self.cache.lock_file_name(f"{plate}_{filename}"):
             return self.cache.load_file(
@@ -372,7 +516,17 @@ class DataSource:
         self,
         plate: str,
         pattern: str,
-    ):
+    ) -> list[str]:
+        """
+        Find and return a list of files matching the given pattern in the
+        given plate.
+
+        This method needs to be implemented in a subclass.
+
+        :param plate: str, the name of the plate the files are located in
+        :param pattern: str, a shell-like glob pattern
+        :return: a list of files matching the pattern
+        """
         raise NotImplementedError
 
     def _load_gene_list(self) -> dict[str, Gene]:
@@ -389,17 +543,17 @@ class DataSource:
                 row = dict(zip(headers, raw_row))
                 N = CellLine.from_data(  # type: ignore[misc]
                     "N",
-                    *[row["N " + h] for h in HEADERS_CELL_LINE],  # type: ignore[arg-type]
+                    *[row["N " + h] for h in HeadersCellLine],  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
                 C = CellLine.from_data(  # type: ignore[misc]
                     "C",
-                    *[row["C " + h] for h in HEADERS_CELL_LINE],  # type: ignore[arg-type]
+                    *[row["C " + h] for h in HeadersCellLine],  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
-                gene = Gene(*[row[h] for h in HEADERS_GENE], N, C)  # type: ignore[call-arg,arg-type]
+                gene = Gene(*[row[h] for h in HeadersGene], N, C)  # type: ignore[call-arg,arg-type]
                 C.gene = gene
                 N.gene = gene
                 genes[gene.id] = gene
@@ -445,4 +599,5 @@ class DataSource:
 
     @property
     def gene_collection(self):
+        """The collection of `Gene` objects present in the data source."""
         return self._gene_collection

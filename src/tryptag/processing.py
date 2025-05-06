@@ -16,13 +16,26 @@ logger = logging.getLogger("tryptag.processing")
 
 
 class WorkList(Sequence[CellLine]):
+    """
+    Class holding a list of `CellLine`s.
+
+    This class holds a list of CellLine objects and implements facilities for
+    querying / filtering this list and for running image and other analyses.
+    """
     def __init__(
         self,
         tryptag: TrypTag,
-        work_list: list[CellLine],
+        cell_line_list: list[CellLine],
     ):
+        """
+        Initialise a `WorkList` instance.
+
+        :param tryptag: A reference to the core `TrypTag` object (to run
+            analysis code).
+        :param cell_line_list: A list of `CellLine` objects to include.
+        """
         self.tryptag = tryptag
-        self._cell_lines = list(set(work_list))
+        self._cell_lines = list(set(cell_line_list))
 
     def __len__(self):
         return len(self._cell_lines)
@@ -34,6 +47,12 @@ class WorkList(Sequence[CellLine]):
         self,
         filter_function: Callable[[CellLine], bool]
     ):
+        """
+        Advanced `CellLine` filtering functionality.
+
+        Runs `filter_function` on each `CellLine` object and returns a
+        `WorkList` of `CellLines` for which it evaluated as `True`.
+        """
         return WorkList(
             self.tryptag,
             [
@@ -47,6 +66,11 @@ class WorkList(Sequence[CellLine]):
         self,
         gene_id_list: list[str],
     ):
+        """
+        Takes a list of Gene IDs and returns a new `WorkList` containing all
+        `CellLine`s in this current `WorkList` whose `gene_id` was in the
+        given list.
+        """
         return self.filter(
             lambda cell_line: cell_line.gene_id in gene_id_list
         )
@@ -59,8 +83,18 @@ class WorkList(Sequence[CellLine]):
             required_modifiers: list[str] | None = None
     ):
         """
-        Get a worklist of `gene_id` and `terminus` hits where any of the
-        localisation annotations match the query.
+        Filters for localisation terms and modifiers.
+
+        This returns a new `WorkList` containing all `CellLine`s in this
+        current `WorkList` filtered by localisation annotation. A `CellLine`
+        is only included if at least one annotation term matches the given
+        `query_term` while containing all modifiers in `required_modifiers`
+        and none of the modifiers in `exclude_modifiers`. If `match_subterms`
+        is given, the ontology parents of all annotation terms of each
+        `CellLine` are matched recursively until either a match is found or the
+        root of the ontology is reached (for example if a `CellLine` has the
+        annotation "nucleolus" it will be included when we search for
+        "nucleus" if `match_subterms` is `True`).
 
         :param query_term: Search query annotation term from the localisation
             ontology.
@@ -70,8 +104,7 @@ class WorkList(Sequence[CellLine]):
             matched, default `"weak"` and `"<10%"`.
         :param required_modifiers: List of modifier terms all of which must be
             matched, default `None`.
-        :return: List of `CellLine` objects of the hits, containing
-            `gene_id` and `terminus`.
+        :return: A new `WorkList` containing the matching `CellLine`s.
         """
         if required_modifiers is None:
             set_of_required_mods = None
@@ -102,14 +135,32 @@ class WorkList(Sequence[CellLine]):
         }
         return result
 
-    def process(
+    def analysis(
         self,
         analysis_function,
         workers: int | None = None,
         multiprocess_mode: Literal["process", "thread"] | None = "process",
     ):
-        logger.debug(f"Analysing worklist with {len(self._cell_lines)} "
-                     "entries")
+        """
+        Handles (potentially multi-process or multi-threaded) analysis of
+        `CellLine`s included in this `WorkList`.
+
+        :param analysis_function: Function to use for analysis.
+            `analysis_function` should take exactly two arguments, `tryptag`
+            (`TrypTag` instance) and `cell_line` (`CellLine` object) in this
+            order.
+        :param workers: Number of threads/processes to spawn, default is
+            number of CPUs.
+        :param multiprocess_mode: `"process"` for parallel processes,
+            `"thread"` for parallel threads or `None` for no parallel
+            processing (directly calls `analysis_function`).
+        :return: List of dicts in the form `{"life_stage": life_stage,
+            "gene_id": gene_id, "terminus": terminus, "result":
+            analysis_function_return}`. These may be in a different order to
+            `work_list`.
+        """
+        logger.debug("Running analysis of work list with "
+                     f"{len(self._cell_lines)} entries")
 
         # get number of workers, default to number of cpus
         if workers is None:
