@@ -12,13 +12,6 @@ from .images import FieldImage, CellImage
 
 logger = logging.getLogger(__name__)
 
-
-class _tqdmDownload(tqdm):
-    def urllib_callback(self, transferred_blocks, block_size, total_size):
-        self.total = total_size
-        return self.update(transferred_blocks * block_size - self.n)
-
-
 STANDARD_DATASOURCES = {
     "procyclic": lambda cache: Zenodo(cache, master_record_id=6862289),
     "bloodstream": lambda cache: Zenodo(cache, master_record_id=7258722)
@@ -193,7 +186,7 @@ class TrypTag:
             ):
                 hits.append(cell_line)
         return hits
-    
+
     @property
     def localisation_ontology(self):
         ontology = {}
