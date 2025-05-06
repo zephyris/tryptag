@@ -1,12 +1,12 @@
 from __future__ import annotations
 import logging
-from typing import Callable
+from typing import Callable, Literal
 import warnings
 
-from tqdm.auto import tqdm
+from tryptag.processing import WorkList
 
 from .cache import Cache
-from .datasource import CellLine, CellLineStatus, DataSource
+from .datasource import CellLine, CellLineStatus, DataSource, Gene
 from .zenodo import Zenodo
 from .images import FieldImage, CellImage
 
@@ -110,7 +110,7 @@ class TrypTag:
         warnings.warn("life_stages is deprecated.")
         return [None]
 
-    def worklist_all(self, life_stage: str | None = None) -> list[CellLine]:
+    def worklist_all(self, life_stage: str | None = None):
         """
         All `gene_id` and `terminus` combinations with data, as a `CellLine`
         object containing `life_stage`, `gene_id` and `terminus`.
@@ -121,12 +121,17 @@ class TrypTag:
         if life_stage is not None:
             warnings.warn("life_stage is deprecated and ignored.")
 
-        return [
+        genes: list[Gene] = list(self.gene_list.values())
+        cell_lines = [
             cell_line
-            for gene_id, gene in self.gene_list.items()
+            for gene in genes
             for cell_line in [gene.C, gene.N]
             if cell_line.status == CellLineStatus.GENERATED
         ]
+        return WorkList(
+            self,
+            cell_lines,
+        )
 
     def worklist_parental(self, life_stage: str | None = None) -> list:
         """
@@ -137,15 +142,20 @@ class TrypTag:
         if life_stage is not None:
             warnings.warn("life_stage is deprecated and ignored.")
 
-        return [
+        genes: list[tuple[str, Gene]] = list(self.gene_list.items())
+        cell_lines = [
             cell_line
-            for gene_id, gene in self.gene_list.items()
+            for gene_id, gene in genes
             for cell_line in [gene.C, gene.N]
             if (
                 "wild-type" in gene_id and
                 cell_line.status == CellLineStatus.GENERATED
             )
         ]
+        return WorkList(
+            self,
+            cell_lines,
+        )
 
     def localisation_search(
             self,
@@ -338,46 +348,12 @@ class TrypTag:
         warnings.warn("open_cell_custom is deprecated. Use open_cell instead.")
         return self.open_cell(*args, **kwargs)
 
-    def _list_analysis_worker(
-        self,
-        cell_line: CellLine,
-        analysis_function: Callable,
-        threading_mode: bool
-    ):
-        """
-        Worker for multiprocess/thread parallel analysis of a `work_list`.
-
-        :param cell_line: `CellLine` object defining the `life_stage`,
-            `gene_id` and `terminus` combination to analyse.
-        :param analysis_function: Function name to use for analysis.
-            `analysis_function` should take exactly two arguments, `tryptag`
-            (`TrypTag` instance) and `cell_line` (`CellLine` object) in this
-            order.
-        :param threading_mode: True if running in threading mode. This
-            triggers a deep copy of `self` to avoid thread safety issues.
-        :return: List of dicts in the form `{"life_stage": life_stage,
-            "gene_id": gene_id, "terminus": terminus, "result":
-            analysis_function_return}`.
-        """
-        # Deep copy tryptag object if running in threading mode (to avoid
-        # thread safety issues)
-        # TODO: I doubt this is needed anymore, but need to test!
-        if threading_mode:
-            from copy import deepcopy
-            self = deepcopy(self)
-
-        result = {
-            "cell_line": cell_line,
-            "result": analysis_function(self, cell_line),
-        }
-        return result
-
     def analyse_list(
         self,
-        work_list,
-        analysis_function,
-        workers=None,
-        multiprocess_mode="process"
+        work_list: WorkList,
+        analysis_function: Callable,
+        workers: int | None = None,
+        multiprocess_mode: Literal["process", "thread"] | None = "process"
     ):
         """
         Simple handler for parallel analysis of a `work_list`.
@@ -398,54 +374,11 @@ class TrypTag:
             analysis_function_return}`. These may be in a different order to
             `work_list`.
         """
-        import concurrent.futures
-        import multiprocessing
-
-        # deduplicate work_list
-        dedup_work_list = set(work_list)
-
-        logger.debug(f"Analysing worklist with {len(dedup_work_list)} entries")
-
-        # get number of workers, default to number of cpus
-        if workers is None:
-            workers = multiprocessing.cpu_count()
-
-        if multiprocess_mode is None:
-            # run in a single thread, still use the ThreadPoolExecutor since
-            # that's equivalent
-            logger.debug("Single process")
-            Executor = concurrent.futures.ThreadPoolExecutor
-            workers = 1
-        elif multiprocess_mode == "process":
-            # setup executor as a process pool
-            logger.debug(f"Parallel processes with {workers} workers")
-            Executor = concurrent.futures.ProcessPoolExecutor
-        elif multiprocess_mode == "thread":
-            # setup executor as a thread pool
-            logger.debug("Parallel threads with", workers, "workers")
-            Executor = concurrent.futures.ThreadPoolExecutor
-        else:
-            raise ValueError(f"Unknown multiprocess_mode '{multiprocess_mode}")
-
-        with Executor(workers) as executor:
-            futures = [
-                executor.submit(
-                    self._list_analysis_worker,
-                    cell_line=cell_line,
-                    analysis_function=analysis_function,
-                    threading_mode=multiprocess_mode == "thread"
-                ) for cell_line in dedup_work_list]
-            results = []
-            total = len(futures)
-            for nr, future in enumerate(tqdm(
-                concurrent.futures.as_completed(futures),
-                total=total,
-                smoothing=0,
-                disable=logger.getEffectiveLevel() != logging.INFO,
-            )):
-                logger.debug(f"{nr + 1} / {total} done.")
-                results.append(future.result())
-        return results
+        return work_list.process(
+            analysis_function,
+            workers,
+            multiprocess_mode
+        )
 
     def cell_list(self, cell_line: CellLine):
         return [

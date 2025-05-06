@@ -310,7 +310,7 @@ class GeneCollection(Mapping):
     def __init__(self, genes: dict[str, Gene]):
         self.genes = genes
 
-    def __getitem__(self, geneid: str):
+    def __getitem__(self, geneid: str) -> Gene:
         if geneid == "procyclic" or geneid is None:
             warnings.warn(
                 "Specifying a life stage is deprecated."
