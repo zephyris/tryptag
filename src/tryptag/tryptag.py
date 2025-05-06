@@ -6,7 +6,7 @@ import warnings
 from tryptag.processing import WorkList
 
 from .cache import Cache
-from .datasource import CellLine, CellLineStatus, DataSource, Gene
+from .datasource import CellLine, CellLineStatus, DataSource
 from .zenodo import Zenodo
 from .images import FieldImage, CellImage
 
@@ -19,7 +19,7 @@ STANDARD_DATASOURCES = {
 
 
 class TrypTag:
-    """TrypTag abstract base class, this should never be instantiated."""
+    """TrypTag API class."""
 
     datasource: DataSource
 
@@ -32,7 +32,9 @@ class TrypTag:
         datasource: DataSource | None = None,
         life_stages: list[str] | None = None,  # deprecated
     ):
-        """Initialise TrypTag Base object.
+        """Initialise TrypTag API. This class can be instantiated multiple
+        times for different data sets (e.g. the procyclic and bloodstream
+        form data sets).
 
         Keyword arguments:
         verbose -- print verbose output from accessing data (default `True`)
@@ -103,6 +105,20 @@ class TrypTag:
 
     @property
     def gene_list(self):
+        """The genes in the data set. This is a mapping, so the list of genes
+        can be extracted via
+        ```python
+        genes = list(tt.gene_list)
+        ```
+        and individual genes can be accessed by
+        ```python
+        gene = tt.gene_list["Tb927.9.8570"]
+        ```
+        Individual cell lines can then be accessed through the "N" and "C"
+        attributes:
+        ```python
+        cell_line = gene.C
+        """
         return self.datasource.gene_collection
 
     @property
@@ -110,27 +126,31 @@ class TrypTag:
         warnings.warn("life_stages is deprecated.")
         return [None]
 
+    @property
+    def cell_lines(self):
+        """A list of all cell lines that have been considered (even ones that
+        were not successfully generated!)."""
+        return WorkList(
+            self,
+            [
+                cell_line
+                for gene in self.gene_list.values()
+                for cell_line in [gene.C, gene.N]
+            ]
+        )
+
     def worklist_all(self, life_stage: str | None = None):
         """
         All `gene_id` and `terminus` combinations with data, as a `CellLine`
-        object containing `life_stage`, `gene_id` and `terminus`.
-
-        :param life_stage: Which life cycle stage to load data from, default
-        is first entry in `self.life_stages`.
+        object containing `life_stage`, `gene_id` and `terminus`. In contrast
+        to `TrypTag.cell_lines`, this only returns cell lines that have
+        been successfully generated.
         """
         if life_stage is not None:
             warnings.warn("life_stage is deprecated and ignored.")
 
-        genes: list[Gene] = list(self.gene_list.values())
-        cell_lines = [
-            cell_line
-            for gene in genes
-            for cell_line in [gene.C, gene.N]
-            if cell_line.status == CellLineStatus.GENERATED
-        ]
-        return WorkList(
-            self,
-            cell_lines,
+        return self.cell_lines.filter(
+            lambda cell_line: cell_line.status == CellLineStatus.GENERATED
         )
 
     def worklist_parental(self, life_stage: str | None = None) -> list:
@@ -142,19 +162,8 @@ class TrypTag:
         if life_stage is not None:
             warnings.warn("life_stage is deprecated and ignored.")
 
-        genes: list[tuple[str, Gene]] = list(self.gene_list.items())
-        cell_lines = [
-            cell_line
-            for gene_id, gene in genes
-            for cell_line in [gene.C, gene.N]
-            if (
-                "wild-type" in gene_id and
-                cell_line.status == CellLineStatus.GENERATED
-            )
-        ]
-        return WorkList(
-            self,
-            cell_lines,
+        return self.worklist_all().filter(
+            lambda cell_line: cell_line.is_parental
         )
 
     def localisation_search(
@@ -164,13 +173,11 @@ class TrypTag:
             match_subterms: bool = True,
             exclude_modifiers: list[str] = ["weak", "<10%"],
             required_modifiers: list[str] | None = None
-    ) -> list:
+    ):
         """
         Get a worklist of `gene_id` and `terminus` hits where any of the
         localisation annotations match the query.
 
-        :param life_stage: Life cycle stage, default to first entry in
-            `self.life_stages`.
         :param query_term: Search query annotation term from the localisation
             ontology.
         :param match_subterms: Whether to also match
@@ -180,31 +187,18 @@ class TrypTag:
         :param required_modifiers: List of modifier terms all of which must be
             matched, default `None`.
         :return: List of `CellLine` objects of the hits, containing
-            `life_stage`, `gene_id` and `terminus`.
+            `gene_id` and `terminus`.
         """
-        if required_modifiers is None:
-            set_of_required_mods = None
-        else:
-            set_of_required_mods = set(required_modifiers)
-        if exclude_modifiers is None:
-            set_of_excluded_mods = None
-        else:
-            set_of_excluded_mods = set(exclude_modifiers)
-
-        # check all against query
-        hits = []
-        for cell_line in self.worklist_all(life_stage):
-            if cell_line.localisation.match(
-                    query_term,
-                    require_modifiers=set_of_required_mods,
-                    exclude_modifiers=set_of_excluded_mods,
-                    recursive=match_subterms,
-            ):
-                hits.append(cell_line)
-        return hits
+        return self.worklist_all().localisation_search(
+            query_term,
+            match_subterms=match_subterms,
+            exclude_modifiers=exclude_modifiers,
+            required_modifiers=required_modifiers,
+        )
 
     @property
     def localisation_ontology(self):
+        """The localisation term ontology."""
         ontology = {}
         entries = self.datasource.localisation_ontology.entries
         for name, entry in entries.items():
@@ -240,15 +234,8 @@ class TrypTag:
         that gene.
 
         :param gene_id_list: List of strings which are gene IDs to search for.
-        :param query_term: Search query annotation term from the localisation
-            ontology.
         """
-        # build list
-        hits = []
-        for cell_line in self.worklist_all(life_stage):
-            if cell_line.gene.id in gene_id_list:
-                hits.append(cell_line)
-        return hits
+        self.worklist_all().gene_id_search(gene_id_list)
 
     def open_field(
             self,
@@ -381,6 +368,7 @@ class TrypTag:
         )
 
     def cell_list(self, cell_line: CellLine):
+        """Return a list of cells from the given `CellLine`."""
         return [
             cell
             for field in cell_line.fields.values()

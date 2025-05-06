@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tryptag.processing")
 
 
-class WorkList(Sequence):
+class WorkList(Sequence[CellLine]):
     def __init__(
         self,
         tryptag: TrypTag,
@@ -29,6 +29,67 @@ class WorkList(Sequence):
 
     def __getitem__(self, index: int):
         return self._cell_lines[index]
+
+    def filter(
+        self,
+        filter_function: Callable[[CellLine], bool]
+    ):
+        return WorkList(
+            self.tryptag,
+            [
+                cell_line
+                for cell_line in self
+                if filter_function(cell_line)
+            ]
+        )
+
+    def gene_id_search(
+        self,
+        gene_id_list: list[str],
+    ):
+        return self.filter(
+            lambda cell_line: cell_line.gene_id in gene_id_list
+        )
+
+    def localisation_search(
+            self,
+            query_term: str,
+            match_subterms: bool = True,
+            exclude_modifiers: list[str] = ["weak", "<10%"],
+            required_modifiers: list[str] | None = None
+    ):
+        """
+        Get a worklist of `gene_id` and `terminus` hits where any of the
+        localisation annotations match the query.
+
+        :param query_term: Search query annotation term from the localisation
+            ontology.
+        :param match_subterms: Whether to also match
+            child/subterm/substructures of `query_term`, default `True`.
+        :param exclude_modifiers: List of modifier terms none of which can be
+            matched, default `"weak"` and `"<10%"`.
+        :param required_modifiers: List of modifier terms all of which must be
+            matched, default `None`.
+        :return: List of `CellLine` objects of the hits, containing
+            `gene_id` and `terminus`.
+        """
+        if required_modifiers is None:
+            set_of_required_mods = None
+        else:
+            set_of_required_mods = set(required_modifiers)
+        if exclude_modifiers is None:
+            set_of_excluded_mods = None
+        else:
+            set_of_excluded_mods = set(exclude_modifiers)
+
+        return self.filter(
+            lambda cell_line: cell_line.localisation.match(
+                query_term,
+                require_modifiers=set_of_required_mods,
+                exclude_modifiers=set_of_excluded_mods,
+                recursive=match_subterms,
+            )
+        )
 
     def _list_analysis_worker(
         self,

@@ -193,6 +193,10 @@ class CellLine:
             return self.gene.id
         return self._gene_id
 
+    @property
+    def is_parental(self):
+        return "wild-type" in self.gene_id
+
     @staticmethod
     def from_data(
         terminus: Literal["N", "C"],
