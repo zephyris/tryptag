@@ -15,9 +15,30 @@ dependencies = [
 	"numpy",
 	"scikit-image",
 	"tqdm",
+	"types-tqdm",
 	"filelock",
 	"matplotlib",
+	"requests",
+	"backports.strenum ; python_version < '3.11'",
+	"annotations @ git+https://github.com/ulido/annotations",
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/zephyris/tryptag"
+
+[tool.tox]
+requires = ["tox>4.19"]
+env_list = ["3.9", "3.10", "3.11", "3.12", "3.13", "type"]
+
+[tool.tox.env_run_base]
+description = "Run unit tests under {base_python}"
+deps = [
+	"pytest>=8",
+	"pytest-sugar",
+]
+commands = [[ "pytest", "tests", { replace = "posargs", extend = true} ]]
+
+[tool.tox.env.type]
+description = "Run type check on code base"
+deps = ["mypy>=1.11.2"]
+commands = [["mypy", { replace = "posargs", default = ["src", "tests"], extend = true} ]]
