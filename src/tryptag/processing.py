@@ -43,6 +43,9 @@ class WorkList(Sequence[CellLine]):
     def __getitem__(self, index: int):
         return self._cell_lines[index]
 
+    def __repr__(self):
+        return f"WorkList([{','.join([str(c) for c in self])}])"
+
     def filter(
         self,
         filter_function: Callable[[CellLine], bool]

@@ -309,13 +309,18 @@ class CellLine:
     def __hash__(self):
         return hash(
             (self.datasource, self.gene.id, self.terminus, self.life_stage))
+    
+    def __eq__(self, other: CellLine):
+        return (
+            self.gene_id == other.gene_id and
+            self.terminus == other.terminus
+        )
 
     def __repr__(self):
         gene_id = self.gene.id if self.gene is not None else self.gene_id
         return (
             f"gene_id = {gene_id} "
             f"terminus = {self.terminus} "
-            f"life_stage = {self.life_stage}"
         )
 
     def filename_stem(self):
