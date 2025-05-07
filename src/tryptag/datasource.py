@@ -309,7 +309,7 @@ class CellLine:
     def __hash__(self):
         return hash(
             (self.datasource, self.gene.id, self.terminus, self.life_stage))
-    
+
     def __eq__(self, other: CellLine):
         return (
             self.gene_id == other.gene_id and

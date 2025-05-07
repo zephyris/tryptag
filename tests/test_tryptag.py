@@ -1,19 +1,33 @@
 from tryptag import TrypTag, tryptools
+from tryptag.bia import BioimageArchive
+from tryptag.cache import Cache
 from tryptag.images import CellImage
 from tryptag.datasource import CellLine
+from tryptag.zenodo import Zenodo
 
 import pytest
 
 
-@pytest.fixture(scope="session")
-def tt_instance(tmp_path_factory):
+@pytest.fixture(
+    scope="session",
+    params=["zenodo", "bia"],
+)
+def tt_instance(tmp_path_factory, request):
+    datasource_name = request.param
+    if datasource_name == "zenodo":
+        datasource = Zenodo
+    elif datasource_name == "bia":
+        datasource = BioimageArchive
+    else:
+        raise ValueError("Unknown data source name")
+    cache = Cache(tmp_path_factory.mktemp(datasource_name))
     tt = TrypTag(
-        data_cache_path=tmp_path_factory.mktemp("tryptag_cache"),
+        datasource=datasource(cache=cache),
     )
     yield tt
 
     # Teardown
-    tt.datasource.cache.delete()
+    cache.delete()
 
 
 def test_localisation_search_simple(tt_instance: TrypTag):

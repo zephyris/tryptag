@@ -21,6 +21,8 @@ class FileTypes(StrEnum):
     CELL_ROIS = "_roisCells.txt"
     THRESHOLDED = "_thr.tif"
     IMAGE = ".tif"
+    LOCALISATION = ".json"
+    OTHER = ""
 
 
 FILE_PATTERN = FileTypes.CELL_ROIS
@@ -152,6 +154,7 @@ class Cache:
         :param plate: str, name of the plate
         :param zipfilepath: Path, path to the zip file to be extracted.
         """
+        # TODO: We should move this to the Zenodo class.
         logger.debug(f"Extracting zip file {zipfilepath} for plate {plate}.")
         with zipfile.ZipFile(zipfilepath) as zip:
             fields = [
@@ -172,7 +175,11 @@ class Cache:
                 desc=f"Extracting {plate}",
                 disable=logger.getEffectiveLevel() != logging.INFO,
             ):
-                for filetype in FileTypes:
+                for filetype in [
+                    FileTypes.CELL_ROIS,
+                    FileTypes.IMAGE,
+                    FileTypes.THRESHOLDED,
+                ]:
                     zippath = pathlib.Path(str(field) + filetype)
                     zipinfo = zip.getinfo(str(zippath))
 

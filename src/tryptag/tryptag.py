@@ -28,7 +28,7 @@ class TrypTag:
         verbose: bool = False,
         data_cache_path: str = "./_tryptag_cache",
         um_per_px: float = 6.5 / 63,
-        dataset_name: str | None = "procyclic",
+        dataset_name: str | None = None,
         datasource: DataSource | None = None,
         life_stages: list[str] | None = None,  # deprecated
     ):
@@ -50,6 +50,13 @@ class TrypTag:
 
         if verbose:
             logger.setLevel(logging.DEBUG)
+
+        if (
+            dataset_name is None and
+            datasource is None and
+            life_stages is None
+        ):
+            dataset_name = "procyclic"
 
         if life_stages is not None:
             warnings.warn(
@@ -79,7 +86,7 @@ class TrypTag:
             dataset_name = life_stages[0]
         if dataset_name is not None and datasource is not None:
             raise ValueError(
-                "life_stage and data_source cannot be specified at the same "
+                "dataset_name and data_source cannot be specified at the same "
                 "time."
             )
         elif dataset_name is not None:
