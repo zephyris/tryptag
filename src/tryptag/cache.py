@@ -178,10 +178,11 @@ class Cache:
 
                     filename = str(zippath.relative_to(zippath.parent))
 
-                    zipinfo.filename = str(self.file_path(filename, plate))
+                    zipinfo.filename = str(
+                        self.file_path(filename, plate).relative_to(self.root))
                     logger.debug(f"Extracting file {zippath} to "
                                  f"{zipinfo.filename}.")
-                    zip.extract(zipinfo)
+                    zip.extract(zipinfo, path=self.root)
 
     def glob_files(self, pattern: str):
         """
