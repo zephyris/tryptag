@@ -1,15 +1,48 @@
 from __future__ import annotations
+import io
 import itertools
 import logging
 import weakref
 
 import numpy
 import skimage
+from PIL import Image
 
 from .cache import FileTypes
 from .datasource import Field, Cell, CellLine, DataSource
 
 logger = logging.getLogger("tryptag.images")
+
+
+def autocontrast(image: numpy.ndarray) -> numpy.ndarray[numpy.uint8]:
+    """
+    Quick and dirty autocontrast.
+
+    This function takes the given `image`, scales it such that the minumum
+    value becomes zero and the maximum value becomes 255 and returns a uint8
+    image.
+
+    :param image: numpy.ndarray, input image
+    :returns: numpy.ndarray type uint8
+    """
+    cmin = image.min()
+    cmax = image.max()
+    return (
+        (255 * ((image - cmin) / (cmax - cmin))).round(0).astype(numpy.uint8))
+
+
+def _channel_to_png_bytes(channel: numpy.ndarray):
+    image = Image.fromarray(channel)
+    bytes_obj = io.BytesIO()
+    with bytes_obj:
+        image.save(bytes_obj, format="PNG")
+        return bytes_obj.getvalue()
+
+
+class Channel(numpy.ndarray):
+    def _repr_png_(self):
+        return _channel_to_png_bytes(
+            autocontrast(self))
 
 
 class CellImage():
@@ -26,12 +59,12 @@ class CellImage():
         "dna_mask",
     ]
 
-    phase: numpy.ndarray | None = None
-    mng: numpy.ndarray | None = None
-    dna: numpy.ndarray | None = None
-    phase_mask: numpy.ndarray | None = None
-    phase_mask_othercells: numpy.ndarray | None = None
-    dna_mask: numpy.ndarray | None = None
+    phase: Channel | None = None
+    mng: Channel | None = None
+    dna: Channel | None = None
+    phase_mask: Channel | None = None
+    phase_mask_othercells: Channel | None = None
+    dna_mask: Channel | None = None
 
     def __init__(
         self,
@@ -103,7 +136,7 @@ class CellImage():
             [("phase_mask_othercells", phase_mask_othercells)]
         )
         # crop (and potentially rotate) to get cell image
-        cell_channels = {}
+        cell_channels: dict[str, numpy.ndarray] = {}
         if width < 0:
             # padding mode
             # TODO: This doesn't need labelling since it only has one label.
@@ -199,7 +232,7 @@ class CellImage():
         cell_channels["phase_mask"][[0, -1], :] = 0
 
         for channel, image in cell_channels.items():
-            setattr(self, channel, image)
+            setattr(self, channel, image.view(Channel))
 
     def __repr__(self):
         string = "\n".join([str(x) for x in [
@@ -210,23 +243,37 @@ class CellImage():
             "dna_mask", self.dna_mask,
             "phase_mask_othercells",
             self.phase_mask_othercells]])
-        if self.cell_line is not None:
-            string += "\n" + str(self.cell_line)
+        if self.cell.field.cell_line is not None:
+            string += "\n" + str(self.cell.field.cell_line)
         string += "\n" + " ".join([str(x) for x in [
-            "field_index =", self.field_index,
-            "cell_index =", self.cell_index,
+            "field_index =", self.cell.field.index,
+            "cell_index =", self.cell.index,
             "rotated =", self.rotated]])
         return string
 
     def __str__(self):
         string = ""
-        if self.cell_line is not None:
-            string += str(self.cell_line)
+        if self.cell.field.cell_line is not None:
+            string += str(self.cell.field.cell_line)
         string += " " + " ".join([str(x) for x in [
-            "field_index =", self.field_index,
-            "cell_index =", self.cell_index,
+            "field_index =", self.cell.field.index,
+            "cell_index =", self.cell.index,
             "rotated =", self.rotated]])
         return string
+
+    def _repr_png_(self):
+        phase = autocontrast(self.phase)
+        mng = autocontrast(self.mng)
+        dna = autocontrast(self.dna)
+
+        output = numpy.empty(
+            (phase.shape[0], phase.shape[1], 3), dtype=numpy.uint16)
+        output[:, :, :] = phase[:, :, numpy.newaxis]
+        output[:, :, 1] += mng
+        output[:, :, [0, 2]] += dna[:, :, numpy.newaxis]
+        output = numpy.clip(output, 0, 255).astype(numpy.uint8)
+
+        return _channel_to_png_bytes(output)
 
 
 class FieldImage():
@@ -241,11 +288,11 @@ class FieldImage():
         "dna_mask",
     ]
 
-    phase: numpy.ndarray | None = None
-    mng: numpy.ndarray | None = None
-    dna: numpy.ndarray | None = None
-    phase_mask: numpy.ndarray | None = None
-    dna_mask: numpy.ndarray | None = None
+    phase: Channel | None = None
+    mng: Channel | None = None
+    dna: Channel | None = None
+    phase_mask: Channel | None = None
+    dna_mask: Channel | None = None
 
     cell_line: CellLine | None = None
     field: Field | None = None
@@ -281,11 +328,13 @@ class FieldImage():
         :param cell_line: CellLine object this `FieldImage` belongs to
         :param field_index: int, index of the `Field` in the `CellLine`
         """
-        self.phase = phase
-        self.mng = mng
-        self.dna = dna
-        self.phase_mask = phase_mask
-        self.dna_mask = dna_mask
+        self.phase = phase.view(Channel) if phase is not None else None
+        self.mng = mng.view(Channel) if mng is not None else None
+        self.dna = dna.view(Channel) if dna is not None else None
+        self.phase_mask = (
+            phase_mask.view(Channel) if phase_mask is not None else None)
+        self.dna_mask = (
+            dna_mask.view(Channel) if dna_mask is not None else None)
         if (cell_line is None) != (field_index is None):
             raise ValueError("need to specify both cell_line and field_index")
         elif cell_line is not None:
@@ -307,7 +356,7 @@ class FieldImage():
         for member in self.IMAGE_MEMBERS:
             other_img: numpy.ndarray | None = getattr(other, member)
             if other_img is not None:
-                setattr(self, member, other_img.copy())
+                setattr(self, member, other_img.copy().view(Channel))
 
     def iter_images(self, copy: bool = False):
         """Generator over image members. Yields a tuple (name, image) per
@@ -383,11 +432,11 @@ class FieldImage():
         thresholded = self._open_thresholded(datasource)
 
         # setup output, copying images as downstream usage may modify
-        self.phase = image[0].astype("uint16", copy=True)
-        self.mng = image[1].astype("uint32", copy=True)
-        self.dna = image[2].astype("uint16", copy=True)
-        self.phase_mask = thresholded[0].astype("uint8", copy=True)
-        self.dna_mask = thresholded[1].astype("uint8", copy=True)
+        self.phase = image[0].astype("uint16", copy=True).view(Channel)
+        self.mng = image[1].astype("uint32", copy=True).view(Channel)
+        self.dna = image[2].astype("uint16", copy=True).view(Channel)
+        self.phase_mask = thresholded[0].astype("uint8", copy=True).view(Channel)
+        self.dna_mask = thresholded[1].astype("uint8", copy=True).view(Channel)
 
         if custom_field_image is not None:
             self.update(custom_field_image)
@@ -427,3 +476,17 @@ class FieldImage():
 
             FieldImage._CACHE[(field, custom_field_image)] = field_image
         return field_image
+
+    def _repr_png_(self):
+        phase = autocontrast(self.phase)
+        mng = autocontrast(self.mng)
+        dna = autocontrast(self.dna)
+
+        output = numpy.empty(
+            (phase.shape[0], phase.shape[1], 3), dtype=numpy.uint16)
+        output[:, :, :] = phase[:, :, numpy.newaxis]
+        output[:, :, 1] += mng
+        output[:, :, [0, 2]] += dna[:, :, numpy.newaxis]
+        output = numpy.clip(output, 0, 255).astype(numpy.uint8)
+
+        return _channel_to_png_bytes(output)

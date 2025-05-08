@@ -18,7 +18,7 @@ def cell_signal_analysis(cell_image) -> dict:
     lab = skimage.measure.label(cell_image.phase_mask)
     props_table = skimage.measure.regionprops_table(
         lab,
-        mng,
+        numpy.array(mng),  # skimage doesn't like subclassed numpy arrays
         properties=("area", "intensity_max", "intensity_mean", "intensity_min")
     )
     return {
@@ -113,12 +113,12 @@ def cell_kn_analysis(cell_image, min_area=17, kn_threshold_area=250):
     dna_lab = skimage.measure.label(cell_image.dna_mask)
     pth_props_table = skimage.measure.regionprops_table(
         dna_lab,
-        cell_image.phase_mask,
+        numpy.array(cell_image.phase_mask),  # skimage doesn't like subclassed numpy arrays
         properties=("intensity_max", "area_convex")
     )
     dna_props_table = skimage.measure.regionprops_table(
         dna_lab,
-        dna,
+        numpy.array(dna),  # skimage doesn't like subclassed numpy arrays
         properties=(
             "intensity_mean",
             "intensity_max",
