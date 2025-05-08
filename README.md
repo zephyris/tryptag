@@ -45,7 +45,7 @@ tryptag = TrypTag()
 ```
 
 Microscopy data is multiple fields of view per cell line.
-It can be accessed using instances of `CellLine`, a simple class defining cell line life cycle stage, gene id (as used on [TriTrypDB](http://tritrypdb.org)), tagging terminus (`n` or `c`). There are multiple fields of view, accessed by field_index:
+It can be accessed using instances of `CellLine`, a simple class defining the gene id (as used on [TriTrypDB](http://tritrypdb.org)) and tagging terminus (`n` or `c`). There are multiple fields of view, accessed by field_index:
 
 ```python
 from tryptag import CellLine
@@ -77,11 +77,13 @@ io.show()
 Bear in mind that accessing a nonexistant gene id, tagging terminus, field or cell will give `KeyError` errors. For example:
 
 ```python
+from tryptag import FieldNotFoundError
+
 for field_index in range(7):
     try:
         field_image = tryptag.open_field(cell_line, field_index)
         # do your analysis here
-    except:
+    except FieldNotFoundError:
         print("Field not found, field_index:", field_index)
 ```
 
@@ -138,12 +140,6 @@ The `tryptools` methods take a `CellImage` object as an input and return various
 cell_image = tryptag.open_cell(CellLine(gene_id="Tb927.9.8570", terminus="n"))
 morphology_result = tryptools.cell_morphology_analysis(cell_image)
 ```
-
-It is possible to explicitly request cell lines from a specific life stage by using:
-```python
-cell_line = CellLine(life_stage="procyclic", gene_id="Tb927.9.8570", terminus="n")
-```
-If the `life_stage` argument is not given, it uses the first life stage given when the `TrypTag` object was initialised ("procyclic" by default).
 
 ### High throughput
 
@@ -211,7 +207,7 @@ or Windows:
 tryptag = TrypTag(data_cache_path = "Z:/my/scratch/directory")
 ```
 
-Do not delete or move files from `data_cache_path`. `tryptag` does not check the plate subdirectories for integrity. You can, however, safely delete a plate subdirectory.
+Do not delete or move files from `data_cache_path`.
 Interrupt of either data download or zip decompression _should_ behave gracefully, leaving partial data but not preventing later automatic re-download and/or re-decompression.
 
 If multiple scripts using the same `data_cache_path` simultaneously try to download a plate it _should_ be handled gracefully.
@@ -238,10 +234,10 @@ This gets populated with information about number of fields of view, cell locati
 ```python
 from tryptag import TrypTag, CellLine
 tryptag = TrypTag()
-life_stage, gene_id, terminus = "procyclic", "Tb927.9.8570", "n"
-localisation = tryptag.gene_list[life_stage][gene_id][terminus]["loc"]
-tryptag.cell_list(CellLine(life_stage=life_stage, gene_id=gene_id, terminus=terminus))
-cell_information = tryptag.gene_list[life_stage][gene_id][terminus]["cells"]
+gene_id, terminus = "Tb927.9.8570", "n"
+localisation = tryptag.gene_list[gene_id][terminus]["loc"]
+tryptag.cell_list(CellLine(gene_id=gene_id, terminus=terminus))
+cell_information = tryptag.gene_list[gene_id][terminus]["cells"]
 ```
 
 # Citing
