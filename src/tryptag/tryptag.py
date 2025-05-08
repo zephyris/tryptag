@@ -376,3 +376,9 @@ class TrypTag:
             for field in cell_line.fields.values()
             for cell in field.cells.values()
         ]
+
+    def fetch_all_data(self):
+        """
+        Fetches all microscopy data and stores it in the data cache.
+        """
+        self.datasource.fetch_all_data()
