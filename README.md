@@ -222,13 +222,8 @@ However, for large-scale analyses, it is more robust to ensure all data is alrea
 tryptag.fetch_all_data()
 ```
 
-The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing from [Zenodo](https://zenodo.org/record/6862289).
-Cached image data may be an older version. `tryptag` records the MD5 hash of the source zip files. If the data source (Zenodo depositions) are updated, the MD5 hash will change.
-Cached data inconsistent MD5 hashes can be checked and reported (but currently not corrected) using:
-
-```python
-tryptag.check_data_cache_integrity()
-```
+The TrypTag data may have minor errors which will be corrected over time. `fetch_all_data` always fetches the latest localisation listing from the data source.
+Cached image data may be an older version.
 
 `tryptag` gives quite verbose information about what it is currently doing to fetch data. To silence this output:
 
