@@ -432,6 +432,7 @@ class DataSource:
         :param cache: the file system cache object we'll be using
         """
         self.cache = cache
+        self.cache.verify_cache_datasource(self)
 
     def __post_init__(self):
         """Post init function of the `DataSource` base class.

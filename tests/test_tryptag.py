@@ -1,12 +1,31 @@
 from tryptag import TrypTag, tryptools
 from tryptag.bia import BioimageArchive
-from tryptag.cache import Cache
+from tryptag.cache import Cache, IncompatibleCacheError
 from tryptag.images import CellImage
 from tryptag.datasource import CellLine
 from tryptag.zenodo import Zenodo
 
 import pytest
 
+
+def test_data_origin_check(tmp_path):
+    cache = Cache(tmp_path)
+    BioimageArchive(cache)
+
+    cache = Cache(tmp_path)
+    with pytest.raises(IncompatibleCacheError):
+        Zenodo(cache)
+
+    cache.delete()
+
+    cache = Cache(tmp_path)
+    Zenodo(cache)
+
+    cache = Cache(tmp_path)
+    with pytest.raises(IncompatibleCacheError):
+        BioimageArchive(cache)
+
+    cache.delete()
 
 @pytest.fixture(
     scope="session",
