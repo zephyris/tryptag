@@ -377,6 +377,25 @@ class TrypTag:
             for cell in field.cells.values()
         ]
 
+    def fetch_data(self, cell_line: CellLine):
+        """
+        Downloads and caches microscopy data for the given cell_line.
+
+        Note that depending on the type of data source, this might trigger
+        downloading of a whole plate instead of just the microscopy data
+        for a single cell line.
+
+        :param cell line: `CellLine` object
+        :return: List of dicts of all cells for this CellLine in the form
+            `{"field_index": field_index, "cell_index": cell_index}`
+        """
+        self.datasource.fetch_data(cell_line)
+        return [
+            {"field_index": field.index, "cell_index": cell.index}
+            for field in cell_line.fields.values()
+            for cell in field.cells.values()
+        ]
+
     def fetch_all_data(self):
         """
         Fetches all microscopy data and stores it in the data cache.

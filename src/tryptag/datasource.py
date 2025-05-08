@@ -604,6 +604,26 @@ class DataSource:
         _populate(data, root=True)
         return ontology
 
+    def fetch_data(self, cell_line: CellLine):
+        """
+        Downloads and caches microscopy data for the given cell_line.
+
+        :param cell line: `CellLine` object
+        """
+        if (
+            cell_line.initialised and
+            cell_line.status == CellLineStatus.GENERATED
+        ):
+            for fn in self.glob_plate_files(
+                cell_line.plate,
+                cell_line.filename_stem() + "*",
+            ):
+                self.load_plate_file(
+                    cell_line.plate,
+                    fn,
+                    return_file_object=False,
+                )
+
     def fetch_all_data(self):
         """
         Fetches all microscopy data and stores it in the cache.
@@ -619,16 +639,7 @@ class DataSource:
         cell_line: CellLine
         for gene in self.gene_collection.values():
             for cell_line in gene.values():
-                if cell_line.status == CellLineStatus.GENERATED:
-                    for fn in self.glob_plate_files(
-                        cell_line.plate,
-                        cell_line.filename_stem() + "*",
-                    ):
-                        self.load_plate_file(
-                            cell_line.plate,
-                            fn,
-                            return_file_object=False,
-                        )
+                self.fetch_data(cell_line)
 
     @property
     def gene_collection(self):
