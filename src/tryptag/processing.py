@@ -46,6 +46,24 @@ class WorkList(Sequence[CellLine]):
     def __repr__(self):
         return f"WorkList([{','.join([str(c) for c in self])}])"
 
+    def union(self, other: WorkList):
+        return WorkList(
+            self.tryptag,
+            set(self).union(set(other))
+        )
+
+    def intersection(self, other: WorkList):
+        return WorkList(
+            self.tryptag,
+            set(self).intersection(set(other))
+        )
+
+    def difference(self, other: WorkList):
+        return WorkList(
+            self.tryptag,
+            set(self).difference(set(other))
+        )
+
     def filter(
         self,
         filter_function: Callable[[CellLine], bool]

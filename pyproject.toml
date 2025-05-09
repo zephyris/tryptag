@@ -14,6 +14,7 @@ requires-python = ">=3.8"
 dependencies = [
 	"numpy",
 	"scikit-image",
+	"Pillow",
 	"tqdm",
 	"types-tqdm",
 	"filelock",

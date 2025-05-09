@@ -27,6 +27,30 @@ else:
 logger = logging.getLogger("tryptag.datasource")
 
 
+class GeneNotFoundError(KeyError):
+    def __init__(self, geneid: str):
+        super().__init__(self, f"Gene ID {geneid} not found.")
+        self.geneid = geneid
+
+
+class InvalidTerminusError(KeyError):
+    def __init__(self, terminus: str):
+        super().__init__(self, f"Invalid terminus {terminus} specified.")
+        self.terminus = terminus
+
+
+class FieldNotFoundError(KeyError):
+    def __init__(self, index):
+        super().__init__(f"No field with index {index} found.")
+        self.index = index
+
+
+class CellNotFoundError(KeyError):
+    def __init__(self, index):
+        super().__init__(f"No cell with index {index} found.")
+        self.index = index
+
+
 class HeadersGene(StrEnum):
     """Column headers that document gene properties in localisations.tsv"""
 
@@ -128,16 +152,6 @@ class Cell:
         return f"Cell from {self.field}"
 
 
-class FieldDoesNotExistError(Exception):
-    def __init__(
-        self,
-        cell_line: CellLine,
-        index: int,
-    ):
-        self.cell_line = cell_line
-        self.index = index
-
-
 class Field:
     """Class describing metadata for a `CellLine`'s field of view."""
     def __init__(
@@ -159,7 +173,7 @@ class Field:
         self.datasource = datasource
 
         if not self.exists():
-            raise FieldDoesNotExistError(self.cell_line, self.index)
+            raise FieldNotFoundError(self.index)
 
         cell_file = datasource.load_plate_file(
             cell_line.plate,
@@ -169,7 +183,7 @@ class Field:
             # Skip header line
             next(cell_file)
             cell_list = [Cell.from_line(self, line) for line in cell_file]
-            self.cells = {cell.index: cell for cell in cell_list}
+        self.cells = CellCollection(cell_list)
 
     def filename(self, file_type: FileTypes):
         """Return the name of the given file type for this field of view."""
@@ -195,6 +209,54 @@ class Field:
         return f"{self.cell_line} index = {self.index}"
 
 
+class FieldCollection(Mapping):
+    """Class holding a collection of Fields."""
+    def __init__(self, fields: list[Field]):
+        """Initialise a field collection.
+
+        :param fields: list of Fields
+        """
+        self._fields = {
+            field.index: field for field in fields
+        }
+
+    def __getitem__(self, index: int):
+        try:
+            return self._fields[index]
+        except KeyError:
+            raise FieldNotFoundError(index)
+
+    def __len__(self):
+        return len(self._fields)
+
+    def __iter__(self):
+        return iter(self._fields)
+
+
+class CellCollection(Mapping):
+    """Class holding a collection of Cells."""
+    def __init__(self, cells: list[Cell]):
+        """Initialise a cell collection.
+
+        :param fields: list of Cell
+        """
+        self._cells = {
+            cell.index: cell for cell in cells
+        }
+
+    def __getitem__(self, index: int):
+        try:
+            return self._cells[index]
+        except KeyError:
+            raise CellNotFoundError(index)
+
+    def __len__(self):
+        return len(self._cells)
+
+    def __iter__(self):
+        return iter(self._cells)
+
+
 class CellLine:
     """Class describing a cell line within the TrypTag project."""
     gene: Gene = None
@@ -214,7 +276,8 @@ class CellLine:
     def __init__(
         self,
         gene_id: str,
-        terminus: str
+        terminus: str,
+        life_stage: str | None = None,
     ):
         """
         Create a `CellLine` object.
@@ -226,11 +289,14 @@ class CellLine:
         :param terminus: str, terminus of the tag on the cell line (either "C"
             or "N")
         """
+        if life_stage is not None:
+            warnings.warn("life_stage is deprecated and ignored.")
+
         self._initialised = False
         self._gene_id = gene_id
         terminus = terminus.upper()
         if terminus not in ["N", "C"]:
-            raise ValueError("terminus needs to be either 'N' or 'C'")
+            raise InvalidTerminusError(terminus)
         self.terminus = terminus
 
     @property
@@ -328,23 +394,25 @@ class CellLine:
         return f"{self.gene.id}_4_{self.terminus}_"
 
     @cached_property
-    def fields(self) -> dict[int, Field]:
+    def fields(self) -> FieldCollection:
         """The `Field`s of view belonging to this cell line."""
         if self.status != CellLineStatus.GENERATED:
-            return {}
-        stem = self.filename_stem()
-        files = self.datasource.glob_plate_files(
-            self.plate,
-            f"{stem}*{FILE_PATTERN}",
-        )
-        indices = [
-            int(fname.replace(stem, "").replace(FILE_PATTERN, "")) - 1
-            for fname in files
-        ]
-        return {
-            index: Field(self, index, self.datasource)
-            for index in sorted(indices)
-        }
+            fields = []
+        else:
+            stem = self.filename_stem()
+            files = self.datasource.glob_plate_files(
+                self.plate,
+                f"{stem}*{FILE_PATTERN}",
+            )
+            indices = [
+                int(fname.replace(stem, "").replace(FILE_PATTERN, "")) - 1
+                for fname in files
+            ]
+            fields = [
+                Field(self, index, self.datasource)
+                for index in sorted(indices)
+            ]
+        return FieldCollection(fields)
 
     def __getitem__(self, key):
         warnings.warn(
@@ -385,7 +453,7 @@ class Gene(Mapping):
         elif terminus == "C":
             return self.C
         else:
-            raise KeyError(f"Terminus {terminus} unknown.")
+            raise InvalidTerminusError(terminus)
 
     def __iter__(self):
         return iter(["C", "N"])
@@ -410,7 +478,10 @@ class GeneCollection(Mapping):
                 "Specifying a life stage is deprecated."
             )
             return self
-        return self.genes[geneid]
+        try:
+            return self.genes[geneid]
+        except KeyError:
+            raise GeneNotFoundError(geneid)
 
     def __iter__(self):
         return iter(self.genes)
