@@ -3,7 +3,6 @@ import fnmatch
 import io
 import json
 import logging
-import os
 import pathlib
 from typing import Literal
 
@@ -17,16 +16,8 @@ from tryptag.tryptag import TrypTag
 
 logger = logging.getLogger("tryptag.bia")
 
-# TODO: Remove private key!
-if "BIA_SECRET_KEY" in os.environ:
-    BIA_API_ROOT = (
-        "https://ftp.ebi.ac.uk/pub/databases/biostudies/.private/"
-        f"{os.environ['BIA_SECRET_KEY']}/S-BIAD"
-    )
-else:
-    BIA_API_ROOT = "https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BIAD"
+BIA_API_ROOT = "https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BIAD"
 DOWNLOAD_MAX_TRIES = 3
-
 
 FILE_TYPES = {
     "Cell ROIs": FileTypes.CELL_ROIS,

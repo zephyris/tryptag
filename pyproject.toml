@@ -36,9 +36,6 @@ deps = [
 	"pytest>=8",
 	"pytest-sugar",
 ]
-pass_env = [
-	"BIA_SECRET_KEY",
-]
 commands = [[ "pytest", "tests", { replace = "posargs", extend = true} ]]
 
 [tool.tox.env.type]
