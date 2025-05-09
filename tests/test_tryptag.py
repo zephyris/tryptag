@@ -8,6 +8,10 @@ from tryptag.zenodo import Zenodo
 import pytest
 
 
+def test_default(tmp_path):
+    TrypTag(data_cache_path=tmp_path)
+
+
 def test_data_origin_check(tmp_path):
     cache = Cache(tmp_path)
     BioimageArchive(cache)
@@ -29,7 +33,7 @@ def test_data_origin_check(tmp_path):
 
 @pytest.fixture(
     scope="session",
-    params=["zenodo", "bia"],
+    params=["bia", "zenodo"],
 )
 def tt_instance(tmp_path_factory, request):
     datasource_name = request.param

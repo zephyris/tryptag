@@ -3,17 +3,17 @@ import logging
 from typing import Callable, Literal
 import warnings
 
-from tryptag.processing import WorkList
-
+from .bia import BioimageArchive
 from .cache import Cache
 from .datasource import CellLine, CellLineStatus, DataSource
+from .processing import WorkList
 from .zenodo import Zenodo
 from .images import FieldImage, CellImage
 
 logger = logging.getLogger("tryptag")
 
 STANDARD_DATASOURCES = {
-    "procyclic": lambda cache: Zenodo(cache, master_record_id=6862289),
+    "procyclic": lambda cache: BioimageArchive(cache, accession="S-BIAD1866"),
     "bloodstream": lambda cache: Zenodo(cache, master_record_id=7258722)
 }
 
