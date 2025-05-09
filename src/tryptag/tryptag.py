@@ -376,6 +376,16 @@ class TrypTag:
             for field in cell_line.fields.values()
             for cell in field.cells.values()
         ]
+    
+    def check_if_cached(self, cell_line: CellLine):
+        """
+        Checks if data is cached for a given `gene_id` and `terminus`
+
+        :param cell line: `CellLine` object containing `gene_id` and
+            `terminus`.
+        :return: If the data is already cached
+        """
+        return self.datasource.check_if_cached(cell_line)
 
     def fetch_data(self, cell_line: CellLine):
         """

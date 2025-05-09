@@ -641,6 +641,20 @@ class DataSource:
             for cell_line in gene.values():
                 self.fetch_data(cell_line)
 
+    def check_if_cached(self, cell_line: CellLine):
+        if not cell_line.initialised:
+            cell_line = (
+                self.gene_collection[cell_line.gene_id][cell_line.terminus])
+        file_stem = cell_line.filename_stem()
+        return all([
+            self.cache.is_cached(file_stem + file_type, cell_line.plate)
+            for file_type in [
+                FileTypes.CELL_ROIS,
+                FileTypes.IMAGE,
+                FileTypes.THRESHOLDED,
+            ]
+        ])
+
     @property
     def gene_collection(self):
         """The collection of `Gene` objects present in the data source."""

@@ -111,6 +111,10 @@ class Cache:
         path.parent.mkdir(exist_ok=True)
         return path
 
+    def is_cached(self, filename: str, plate: str | None = None):
+        local_path = self.file_path(filename, plate)
+        return local_path.is_file()
+
     def temporary_file(self, suffix="", mode="wb", delete=False):
         """
         Create a local temporary file object within the cache (e.g. to
