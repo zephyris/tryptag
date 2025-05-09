@@ -255,7 +255,7 @@ If you use the TrypTag data resource, please cite Billington _et al._ 2023 Natur
 We recommend including this citation in the results or methods if TrypTag was used as part of a discovery process.
 If directly using TrypTag images, please also indicate in the figure legend or similar which images are from TrypTag.
 
-If you use the `tryptag` module to access or analyse TrypTag data, please also cite this [Github repository](https://github.com/zephyris/tryptag) and the master TrypTag Zenodo deposition [doi:10.5281/zenodo.6862289](https://doi.org/10.5281/zenodo.6862289).
+If you use the `tryptag` module to access or analyse TrypTag data, please also cite this [Github repository](https://github.com/zephyris/tryptag) and the TrypTag deposition on the BioImage Archive [doi:10.6019/S-BIAD1866](https://doi.org/10.6019/S-BIAD1866).
 
 You may also find the following papers of use:
 1. Dean _et al._ 2019 Trends Parasitol. [doi:10.1016/j.pt.2016.10.009](https://doi.org/10.1016/j.pt.2016.10.009) Project announcement, with original aims and experimental strategy.

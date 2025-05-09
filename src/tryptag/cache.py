@@ -1,13 +1,17 @@
+from __future__ import annotations
 import logging
 import pathlib
 import shutil
 import sys
 import tempfile
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 import zipfile
 
 from filelock import FileLock
 from tqdm import tqdm
+
+if TYPE_CHECKING:
+    from tryptag.datasource import DataSource
 
 if sys.version_info >= (3, 11):
     from enum import StrEnum
@@ -21,6 +25,8 @@ class FileTypes(StrEnum):
     CELL_ROIS = "_roisCells.txt"
     THRESHOLDED = "_thr.tif"
     IMAGE = ".tif"
+    LOCALISATION = ".json"
+    OTHER = ""
 
 
 FILE_PATTERN = FileTypes.CELL_ROIS
@@ -31,6 +37,10 @@ class FileNotCachedError(Exception):
         super().__init__(*args)
         self.filename = filename
         self.plate = plate
+
+
+class IncompatibleCacheError(Exception):
+    pass
 
 
 # TODO: Label cache from data source used
@@ -49,6 +59,26 @@ class Cache:
         self.root: pathlib.Path = pathlib.Path(cache_directory)
         if not self.root.exists():
             self.root.mkdir(parents=True)
+
+    def verify_cache_datasource(self, datasource: DataSource):
+        stamp = str(type(datasource).__name__)
+
+        def genfile_cb():
+            with self.file_path("cache_origin").open("w") as f:
+                f.write(stamp)
+        with self.load_file(
+            "cache_origin",
+            genfile_cb=genfile_cb,
+        ) as f:
+            cache_origin = f.read()
+
+        if cache_origin != stamp:
+            raise IncompatibleCacheError(
+                f"The cache at '{self.root}' has been created using the "
+                f"'{cache_origin}' data source but you are trying to use it "
+                f"with the '{stamp}' data source. Please either delete the "
+                "cache or specify a different cache directory."
+            )
 
     def load_file(
         self,
@@ -152,6 +182,7 @@ class Cache:
         :param plate: str, name of the plate
         :param zipfilepath: Path, path to the zip file to be extracted.
         """
+        # TODO: We should move this to the Zenodo class.
         logger.debug(f"Extracting zip file {zipfilepath} for plate {plate}.")
         with zipfile.ZipFile(zipfilepath) as zip:
             fields = [
@@ -172,7 +203,11 @@ class Cache:
                 desc=f"Extracting {plate}",
                 disable=logger.getEffectiveLevel() != logging.INFO,
             ):
-                for filetype in FileTypes:
+                for filetype in [
+                    FileTypes.CELL_ROIS,
+                    FileTypes.IMAGE,
+                    FileTypes.THRESHOLDED,
+                ]:
                     zippath = pathlib.Path(str(field) + filetype)
                     zipinfo = zip.getinfo(str(zippath))
 

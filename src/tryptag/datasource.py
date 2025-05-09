@@ -309,7 +309,7 @@ class CellLine:
     def __hash__(self):
         return hash(
             (self.datasource, self.gene.id, self.terminus, self.life_stage))
-    
+
     def __eq__(self, other: CellLine):
         return (
             self.gene_id == other.gene_id and
@@ -432,6 +432,7 @@ class DataSource:
         :param cache: the file system cache object we'll be using
         """
         self.cache = cache
+        self.cache.verify_cache_datasource(self)
 
     def __post_init__(self):
         """Post init function of the `DataSource` base class.
