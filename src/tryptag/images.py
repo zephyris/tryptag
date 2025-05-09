@@ -130,6 +130,8 @@ class CellImage():
         )
         # append a copy (channels index 5), pixels if equal 127 ie. other cells
         phase_mask_othercells = 255*(phase_mask == 127)
+        # Remove other cells from phase_mask
+        phase_mask[phase_mask < 255] = 0
 
         channels_iterator = itertools.chain(
             field_image.iter_images(copy=True),
@@ -139,7 +141,6 @@ class CellImage():
         cell_channels: dict[str, numpy.ndarray] = {}
         if width < 0:
             # padding mode
-            # TODO: This doesn't need labelling since it only has one label.
             label_image = skimage.measure.label(phase_mask)
             (ymin, xmin, ymax, xmax) = skimage.measure.regionprops(
                 label_image)[0]["bbox"]
