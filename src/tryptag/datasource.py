@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import cached_property
 import json
 import logging
+import os
 import pathlib
 import sys
 from typing import Literal
@@ -440,7 +441,7 @@ class DataSource:
         This needs to be called at the end of a subclass's constructor.
         """
         self.localisation_ontology = self._load_localisation_ontology()
-        self._gene_collection = GeneCollection(self._load_gene_list())
+        self._load_gene_list()
 
     def fetch_root_file(self, filename: str) -> None:
         """
@@ -563,7 +564,8 @@ class DataSource:
                 C.gene = gene
                 N.gene = gene
                 genes[gene.id] = gene
-        return genes
+
+        self._gene_collection = GeneCollection(genes)
 
     def _load_localisation_ontology(self):
         logger.debug("Loading ontology.")
@@ -602,6 +604,57 @@ class DataSource:
             data = json.load(f)["localisation"]
         _populate(data, root=True)
         return ontology
+
+    def fetch_data(self, cell_line: CellLine):
+        """
+        Downloads and caches microscopy data for the given cell_line.
+
+        :param cell line: `CellLine` object
+        """
+        if (
+            cell_line.initialised and
+            cell_line.status == CellLineStatus.GENERATED
+        ):
+            for fn in self.glob_plate_files(
+                cell_line.plate,
+                cell_line.filename_stem() + "*",
+            ):
+                self.load_plate_file(
+                    cell_line.plate,
+                    fn,
+                    return_file_object=False,
+                )
+
+    def fetch_all_data(self):
+        """
+        Fetches all microscopy data and stores it in the cache.
+        """
+
+        # Re-fetch localisations.tsv
+        locfilename = self.load_root_file(
+            "localisations.tsv", return_file_object=False)
+        os.unlink(locfilename)
+        self._load_gene_list()
+
+        gene: Gene
+        cell_line: CellLine
+        for gene in self.gene_collection.values():
+            for cell_line in gene.values():
+                self.fetch_data(cell_line)
+
+    def check_if_cached(self, cell_line: CellLine):
+        if not cell_line.initialised:
+            cell_line = (
+                self.gene_collection[cell_line.gene_id][cell_line.terminus])
+        file_stem = cell_line.filename_stem()
+        return all([
+            self.cache.is_cached(file_stem + file_type, cell_line.plate)
+            for file_type in [
+                FileTypes.CELL_ROIS,
+                FileTypes.IMAGE,
+                FileTypes.THRESHOLDED,
+            ]
+        ])
 
     @property
     def gene_collection(self):
