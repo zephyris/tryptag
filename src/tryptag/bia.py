@@ -9,10 +9,8 @@ from typing import Literal
 import requests
 from tqdm import tqdm
 
-from tryptag import tryptools
 from tryptag.cache import Cache, FileTypes
 from tryptag.datasource import DataSource
-from tryptag.tryptag import TrypTag
 
 logger = logging.getLogger("tryptag.bia")
 
@@ -181,35 +179,3 @@ class BioimageArchive(DataSource):
         return [
             str(pathlib.Path(p).relative_to(plate)) for p in matches
         ]
-
-
-if __name__ == "__main__":
-    cache = Cache('_bia_cache')
-    bia = BioimageArchive(cache)
-    tt = TrypTag(datasource=bia)
-
-    def analyse(tryptag, cell_line):
-        result = {}
-        fieldcell_list = tryptag.cell_list(cell_line)
-        for fieldcell in fieldcell_list:
-            cell_image = tryptag.open_cell(
-                cell_line, fieldcell.field.index, fieldcell.index)
-            kn_result = tryptools.cell_kn_analysis(cell_image)
-            if kn_result["count_kn"] not in result:
-                result[kn_result["count_kn"]] = 0
-            result[kn_result["count_kn"]] += 1
-        return result
-
-    worklist = tt.worklist_parental()
-    # Sort results, otherwise the comparison fails.
-    results = sorted(
-        tt.analyse_list(
-            worklist,
-            analyse,
-            multiprocess_mode="thread",
-            workers=None,
-        ),
-        key=lambda e: (e["cell_line"].gene_id, e["cell_line"].terminus)
-    )
-
-    print(results)
