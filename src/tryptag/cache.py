@@ -34,7 +34,14 @@ FILE_PATTERN = FileTypes.CELL_ROIS
 
 class FileNotCachedError(Exception):
     def __init__(self, filename: str, plate: str | None = None, *args):
-        super().__init__(*args)
+        if plate is not None:
+            msg = (
+                f"File {filename} from plate {plate} is not cached and could "
+                "not be generated."
+            )
+        else:
+            msg = f"File {filename} is not cached and could not be generated."
+        super().__init__(msg)
         self.filename = filename
         self.plate = plate
 
@@ -108,7 +115,10 @@ class Cache:
                     f"File {str(local_path.relative_to(self.root))} is not "
                     "cached, trying to generate it."
                 )
-                genfile_cb()
+                try:
+                    genfile_cb()
+                except Exception:
+                    raise FileNotCachedError(filename, plate)
             else:
                 logger.warning(
                     f"File {str(local_path.relative_to(self.root))} is not "
