@@ -31,21 +31,24 @@ def test_data_origin_check(tmp_path):
 
     cache.delete()
 
+
 @pytest.fixture(
     scope="session",
     params=["bia", "zenodo"],
 )
 def tt_instance(tmp_path_factory, request):
     datasource_name = request.param
+
+    cache = Cache(tmp_path_factory.mktemp(datasource_name))
+
     if datasource_name == "zenodo":
-        datasource = Zenodo
+        datasource = Zenodo(cache=cache)
     elif datasource_name == "bia":
-        datasource = BioimageArchive
+        datasource = BioimageArchive(cache=cache)
     else:
         raise ValueError("Unknown data source name")
-    cache = Cache(tmp_path_factory.mktemp(datasource_name))
     tt = TrypTag(
-        datasource=datasource(cache=cache),
+        datasource=datasource,
     )
     yield tt
 

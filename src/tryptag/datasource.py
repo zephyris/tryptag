@@ -350,7 +350,8 @@ class CellLine:
         self = CellLine("", terminus)
         self.status = CellLineStatus(data[HeadersCellLine.STATUS])
         if self.status != CellLineStatus.NOT_ATTEMPTED:
-            self.plate, self.well = data[HeadersCellLine.PLATE_AND_WELL].split(" ")
+            self.plate, self.well = data[
+                HeadersCellLine.PLATE_AND_WELL].split(" ")
         else:
             self.plate, self.well = "", ""
         self.forward_primer = data[HeadersCellLine.PRIMER_F]
@@ -360,7 +361,8 @@ class CellLine:
             ontology,
         )
         if HeadersCellLine.FAINTER_THAN_PARENTAL in data:
-            self.fainter_than_parental = data[HeadersCellLine.FAINTER_THAN_PARENTAL]
+            self.fainter_than_parental = data[
+                HeadersCellLine.FAINTER_THAN_PARENTAL]
         else:
             self.fainter_than_parental = None
         if HeadersCellLine.CLASSIFIED_FAINT in data:

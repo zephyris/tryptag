@@ -383,7 +383,7 @@ class TrypTag:
             for field in cell_line.fields.values()
             for cell in field.cells.values()
         ]
-    
+
     def check_if_cached(self, cell_line: CellLine):
         """
         Checks if data is cached for a given `gene_id` and `terminus`
