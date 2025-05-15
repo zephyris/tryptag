@@ -1,4 +1,5 @@
 from __future__ import annotations
+from base64 import standard_b64encode
 import io
 import itertools
 import logging
@@ -14,25 +15,45 @@ from .datasource import Field, Cell, CellLine, DataSource
 logger = logging.getLogger("tryptag.images")
 
 
-def autocontrast(image: numpy.ndarray) -> numpy.ndarray[numpy.uint8]:
+def autocontrast(
+    image: numpy.ndarray,
+    min_quantile: float = 0.0,
+    max_quantile: float = 1.0,
+    min_range: float = 0.0,
+) -> numpy.ndarray[numpy.uint8]:
     """
     Quick and dirty autocontrast.
 
-    This function takes the given `image`, scales it such that the minumum
-    value becomes zero and the maximum value becomes 255 and returns a uint8
-    image.
+    This function takes the given `image`, scales it such that the value
+    corresponding to `min_quantile` (cmin) becomes zero and the value
+    corresponding to `max_quantile` (cmax) becomes 255. If
+    `cmax - cmin < min_range`, `cmax` is set to `cmin + min_range`.
+    Returns a uint8 image.
 
     :param image: numpy.ndarray, input image
+    :param min_quantile: float, minimum quantile to set contrast to
+        (default 0.0)
+    :param max_quantile: float, maximum quantile to set contrast to
+        (default 1.0)
+    :param min_range: float, minimum raw data range, maximum value will
+        be enlarged such that the min-max extent is at least min_range
+        (default 0.0)
     :returns: numpy.ndarray type uint8
     """
-    cmin = image.min()
-    cmax = image.max()
-    return (
-        (255 * ((image - cmin) / (cmax - cmin))).round(0).astype(numpy.uint8))
+    cmin = numpy.quantile(image, min_quantile)
+    cmax = numpy.quantile(image, max_quantile)
+    if cmax - cmin < min_range:
+        cmax = cmin + min_range
+    image = numpy.clip((image - cmin) / (cmax - cmin), 0.0, 1.0)
+    return (255 * image).round(0).astype(numpy.uint8)
 
 
 def _channel_to_png_bytes(channel: numpy.ndarray):
     image = Image.fromarray(channel)
+    return _image_to_png_bytes(image)
+
+
+def _image_to_png_bytes(image: Image.Image):
     bytes_obj = io.BytesIO()
     with bytes_obj:
         image.save(bytes_obj, format="PNG")
@@ -300,6 +321,8 @@ class FieldImage():
     _field_index: int | None = None
     custom_field_image: FieldImage | None = None
 
+    _cached_composite: Image.Image | None = None
+
     _CACHE: weakref.WeakValueDictionary[
         tuple[Field, FieldImage | None], FieldImage
     ] = weakref.WeakValueDictionary()
@@ -436,7 +459,8 @@ class FieldImage():
         self.phase = image[0].astype("uint16", copy=True).view(Channel)
         self.mng = image[1].astype("uint32", copy=True).view(Channel)
         self.dna = image[2].astype("uint16", copy=True).view(Channel)
-        self.phase_mask = thresholded[0].astype("uint8", copy=True).view(Channel)
+        self.phase_mask = (
+            thresholded[0].astype("uint8", copy=True).view(Channel))
         self.dna_mask = thresholded[1].astype("uint8", copy=True).view(Channel)
 
         if custom_field_image is not None:
@@ -478,16 +502,132 @@ class FieldImage():
             FieldImage._CACHE[(field, custom_field_image)] = field_image
         return field_image
 
+    def _cell_bounding_boxes(self):
+        labels = self.phase_mask.astype(numpy.uint16, copy=True)
+
+        cell: Cell
+        for cell in self.field.cells.values():
+            skimage.morphology.flood_fill(
+                labels,
+                (cell.wand[1], cell.wand[0]),
+                cell.index,
+                in_place=True
+            )
+
+        for region in skimage.measure.regionprops(labels):
+            self.field.cells[region["label"]].bounding_box = region["bbox"]
+
+    def composite(self):
+        if self._cached_composite is None:
+            phase = autocontrast(
+                self.phase, min_quantile=0.05, max_quantile=1.0)
+            mng = autocontrast(
+                self.mng, min_quantile=0.9, max_quantile=0.999, min_range=1000)
+            dna = autocontrast(
+                self.dna, min_quantile=0.9, max_quantile=0.999)
+
+            output = numpy.empty(
+                (phase.shape[0], phase.shape[1], 3), dtype=numpy.uint16)
+            output[:, :, :] = phase[:, :, numpy.newaxis]
+            output[:, :, 1] += mng
+            output[:, :, [0, 2]] += dna[:, :, numpy.newaxis]
+            output = numpy.clip(output, 0, 255).astype(numpy.uint8)
+
+            self._cached_composite = Image.fromarray(output)
+        return self._cached_composite
+
+    def _repr_svg_(self):
+        img_height, img_width = self.phase.shape
+
+        png = standard_b64encode(self._repr_png_()).decode()
+
+        if (
+            len(self.field.cells) > 0 and
+            next(iter(self.field.cells.values())).bounding_box is None
+        ):
+            self._cell_bounding_boxes()
+
+        cell: Cell
+        celltexts = []
+        for cell in self.field.cells.values():
+            y, x, y1, x1 = cell.bounding_box
+            width = x1 - x
+            height = y1 - y
+            cx, cy = x + width / 2, y + height / 2
+            width *= 1.3
+            height *= 1.3
+            x, y = cx - width / 2, cy - height / 2
+
+            celltexts.append(f"""
+            <g style="opacity: 0.5;">
+                <rect
+                    x="{max(min(x, img_width), 0)}"
+                    y="{max(min(y, img_height), 0)}"
+                    width="80"
+                    height="40"
+                    fill="black"
+                    stroke="black"
+                    stroke-width="5"/>
+                <text
+                    x="{max(min(x, img_width), 0) + 40}"
+                    y="{max(min(y, img_height), 0)}"
+                    fill="white"
+                    text-anchor="middle"
+                    style="font-size:40px; dominant-baseline: hanging">
+                    {cell.index}
+                </text>
+                <rect
+                    x="{x}"
+                    y="{y}"
+                    width="{width}"
+                    height="{height}"
+                    rx="20"
+                    stroke="black"
+                    stroke-width="5"
+                    fill="none"/>
+            </g>
+            """)
+
+        if cell.field.cell_line.terminus == "N":
+            title = f"mNG::{cell.field.cell_line.gene_id}"
+        else:
+            title = f"{cell.field.cell_line.gene_id}::mNG"
+
+        svg = f'''
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            viewBox="0 0 {img_width} {img_height}"
+            preserveAspectRatio="xMinYMin meet"
+            width="100%"
+            height="100%">
+            <image
+                width="{img_width}"
+                height="{img_height}"
+                xlink:href="data:image/png;base64,{png}"
+                />
+            {"".join(celltexts)}
+            <g style="opacity: 0.5;">
+                <rect
+                    x="0"
+                    y="0"
+                    width="500"
+                    height="60"
+                    fill="black"
+                    stroke="black"
+                    stroke-width="5"/>
+                <text
+                    x="250"
+                    y="10"
+                    fill="white"
+                    text-anchor="middle"
+                    style="font-size:40px; dominant-baseline: hanging">
+                    {title} field {cell.field.index}
+                </text>
+            </g>
+        </svg>
+        '''
+        return svg
+
     def _repr_png_(self):
-        phase = autocontrast(self.phase)
-        mng = autocontrast(self.mng)
-        dna = autocontrast(self.dna)
-
-        output = numpy.empty(
-            (phase.shape[0], phase.shape[1], 3), dtype=numpy.uint16)
-        output[:, :, :] = phase[:, :, numpy.newaxis]
-        output[:, :, 1] += mng
-        output[:, :, [0, 2]] += dna[:, :, numpy.newaxis]
-        output = numpy.clip(output, 0, 255).astype(numpy.uint8)
-
-        return _channel_to_png_bytes(output)
+        return self.composite()._repr_png_()
