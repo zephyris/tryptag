@@ -600,7 +600,8 @@ class FieldImage():
             viewBox="0 0 {img_width} {img_height}"
             preserveAspectRatio="xMinYMin meet"
             width="100%"
-            height="100%">
+            height="100%"
+            style="font-family: sans-serif;">
             <image
                 width="{img_width}"
                 height="{img_height}"
