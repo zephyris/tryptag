@@ -9,7 +9,7 @@ from typing import Literal
 import requests
 from tqdm import tqdm
 
-from tryptag.cache import Cache, FileTypes
+from tryptag.cache import Cache, FileNotCachedError, FileTypes
 from tryptag.datasource import DataSource
 
 logger = logging.getLogger("tryptag.bia")
@@ -24,6 +24,12 @@ FILE_TYPES = {
     "Localisation annotation": FileTypes.LOCALISATION,
     "Other": FileTypes.OTHER,
 }
+
+
+class BIANotAvailableError(Exception):
+    def __init__(self):
+        super().__init__("Connection problem to BioImage Archive, please try "
+                         "again later.")
 
 
 class BiaFile:
@@ -123,7 +129,10 @@ class BioimageArchive(DataSource):
     ):
         super().__init__(cache)
         self.accession = accession
-        self._get_file_index()
+        try:
+            self._get_file_index()
+        except FileNotCachedError:
+            raise BIANotAvailableError()
         self.__post_init__()
 
     @property
@@ -139,8 +148,14 @@ class BioimageArchive(DataSource):
     def fetch_root_file(self, filename: str):
         logger.debug(f"Fetching root file {filename}.")
         biafile = self._file_index[filename]
-        with open(self.cache.file_path(biafile.path), "wb") as outfile:
-            biafile.download(outfile)
+        filepath = self.cache.file_path(biafile.path)
+        outfile = filepath.open("wb")
+        try:
+            with outfile:
+                biafile.download(outfile)
+        except Exception:
+            filepath.unlink(missing_ok=True)
+            raise
 
     def fetch_plate_file(self, plate, filename):
         self.fetch_root_file(f"{plate}/{filename}")

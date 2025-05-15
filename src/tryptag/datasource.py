@@ -56,6 +56,7 @@ class HeadersGene(StrEnum):
 
     GENE_ID = "Gene ID"
     GENE_ALIASES = "Gene aliases"
+    TREU927_ORTHOLOG = "927 ortholog"
 
 
 class HeadersCellLine(StrEnum):
@@ -268,8 +269,8 @@ class CellLine:
     forward_primer: str
     reverse_primer: str
     localisation: OntologyAnnotationCollection
-    fainter_than_parental: bool
-    classified_faint: bool
+    fainter_than_parental: bool | None
+    classified_faint: bool | None
     datasource: DataSource
     life_stage = None
 
@@ -321,13 +322,7 @@ class CellLine:
     @staticmethod
     def from_data(
         terminus: Literal["N", "C"],
-        status: CellLineStatus,
-        plate_and_well: str,
-        forward_primer: str,
-        reverse_primer: str,
-        localisation: str,
-        fainter_than_parental: bool,
-        classified_faint: bool,
+        data: dict,
         datasource: DataSource,
         ontology: Ontology,
     ):
@@ -353,20 +348,27 @@ class CellLine:
             annotation terms are derived from
         """
         self = CellLine("", terminus)
-        self.terminus = terminus
-        self.status = CellLineStatus(status)
+        self.status = CellLineStatus(data[HeadersCellLine.STATUS])
         if self.status != CellLineStatus.NOT_ATTEMPTED:
-            self.plate, self.well = plate_and_well.split(" ")
+            self.plate, self.well = data[
+                HeadersCellLine.PLATE_AND_WELL].split(" ")
         else:
             self.plate, self.well = "", ""
-        self.forward_primer = forward_primer
-        self.reverse_primer = reverse_primer
+        self.forward_primer = data[HeadersCellLine.PRIMER_F]
+        self.reverse_primer = data[HeadersCellLine.PRIMER_R]
         self.localisation = OntologyAnnotationCollection(
-            localisation,
+            data[HeadersCellLine.LOCALISATION],
             ontology,
         )
-        self.fainter_than_parental = fainter_than_parental
-        self.classified_faint = classified_faint
+        if HeadersCellLine.FAINTER_THAN_PARENTAL in data:
+            self.fainter_than_parental = data[
+                HeadersCellLine.FAINTER_THAN_PARENTAL]
+        else:
+            self.fainter_than_parental = None
+        if HeadersCellLine.CLASSIFIED_FAINT in data:
+            self.classified_faint = data[HeadersCellLine.CLASSIFIED_FAINT]
+        else:
+            self.classified_faint = None
         self.datasource = datasource
 
         self._initialised = True
@@ -443,6 +445,7 @@ class Gene(Mapping):
     project."""
     id: str
     aliases: str
+    treu927_ortholog: str | None
     N: CellLine
     C: CellLine
 
@@ -621,17 +624,37 @@ class DataSource:
                 row = dict(zip(headers, raw_row))
                 N = CellLine.from_data(  # type: ignore[misc]
                     "N",
-                    *[row["N " + h] for h in HeadersCellLine],  # type: ignore[arg-type]
+                    {
+                        h: row["N " + h]
+                        for h in HeadersCellLine
+                        if "N " + h in row
+                    },  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
                 C = CellLine.from_data(  # type: ignore[misc]
                     "C",
-                    *[row["C " + h] for h in HeadersCellLine],  # type: ignore[arg-type]
+                    {
+                        h: row["C " + h]
+                        for h in HeadersCellLine
+                        if "C " + h in row
+                    },  # type: ignore[arg-type]
                     datasource=self,
                     ontology=self.localisation_ontology
                 )
-                gene = Gene(*[row[h] for h in HeadersGene], N, C)  # type: ignore[call-arg,arg-type]
+                gene = Gene(
+                    row[HeadersGene.GENE_ID],
+                    (
+                        row[HeadersGene.GENE_ALIASES]
+                        if HeadersGene.GENE_ALIASES in row else ""
+                    ),
+                    (
+                        row[HeadersGene.TREU927_ORTHOLOG]
+                        if HeadersGene.TREU927_ORTHOLOG in row else None
+                    ),
+                    N,
+                    C,
+                )  # type: ignore[call-arg,arg-type]
                 C.gene = gene
                 N.gene = gene
                 genes[gene.id] = gene

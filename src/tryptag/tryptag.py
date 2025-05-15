@@ -7,14 +7,15 @@ from .bia import BioimageArchive
 from .cache import Cache
 from .datasource import CellLine, CellLineStatus, DataSource
 from .processing import WorkList
-from .zenodo import Zenodo
 from .images import FieldImage, CellImage
 
 logger = logging.getLogger("tryptag")
 
 STANDARD_DATASOURCES = {
-    "procyclic": lambda cache: BioimageArchive(cache, accession="S-BIAD1866"),
-    "bloodstream": lambda cache: Zenodo(cache, master_record_id=7258722)
+    "procyclic": lambda cache: BioimageArchive(
+        cache, accession="S-BIAD1866"),
+    "bloodstream": lambda cache: BioimageArchive(
+        cache, accession="S-BIAD1932")
 }
 
 
@@ -383,7 +384,7 @@ class TrypTag:
             for field in cell_line.fields.values()
             for cell in field.cells.values()
         ]
-    
+
     def check_if_cached(self, cell_line: CellLine):
         """
         Checks if data is cached for a given `gene_id` and `terminus`
