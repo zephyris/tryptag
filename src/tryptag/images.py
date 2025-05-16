@@ -19,6 +19,8 @@ def autocontrast(
     image: numpy.ndarray,
     min_quantile: float = 0.0,
     max_quantile: float = 1.0,
+    min_value: int | None = None,
+    max_value: int | None = None,
     min_range: float = 0.0,
 ) -> numpy.ndarray[numpy.uint8]:
     """
@@ -26,22 +28,31 @@ def autocontrast(
 
     This function takes the given `image`, scales it such that the value
     corresponding to `min_quantile` (cmin) becomes zero and the value
-    corresponding to `max_quantile` (cmax) becomes 255. If
-    `cmax - cmin < min_range`, `cmax` is set to `cmin + min_range`.
-    Returns a uint8 image.
+    corresponding to `max_quantile` (cmax) becomes 255. If `min_value` or
+    `max_value` are not `None`, they override the values given by the
+    quantiles. If `cmax - cmin < min_range`, `cmax` is set to
+    `cmin + min_range`. Returns a uint8 image.
 
     :param image: numpy.ndarray, input image
     :param min_quantile: float, minimum quantile to set contrast to
         (default 0.0)
     :param max_quantile: float, maximum quantile to set contrast to
         (default 1.0)
+    :param min_value: int, the minimum pixel value (default `None`)
+    :param max_value: int, the maximum pixel value (default `None`)
     :param min_range: float, minimum raw data range, maximum value will
         be enlarged such that the min-max extent is at least min_range
         (default 0.0)
     :returns: numpy.ndarray type uint8
     """
-    cmin = numpy.quantile(image, min_quantile)
-    cmax = numpy.quantile(image, max_quantile)
+    if min_value is not None:
+        cmin = min_value
+    else:
+        cmin = numpy.quantile(image, min_quantile)
+    if max_value is not None:
+        cmax = max_value
+    else:
+        cmax = numpy.quantile(image, max_quantile)
     if cmax - cmin < min_range:
         cmax = cmin + min_range
     image = numpy.clip((image - cmin) / (cmax - cmin), 0.0, 1.0)
@@ -115,6 +126,8 @@ class CellImage():
         logger.debug(f"Creating cell image for {cell}.")
 
         self.rotated = rotated
+
+        self._cached_composite = None
 
         field_image = FieldImage.from_field(
             cell.field,
@@ -283,19 +296,80 @@ class CellImage():
             "rotated =", self.rotated]])
         return string
 
+    def composite(self):
+        if self._cached_composite is None:
+            # Autocontrast based on whole field image, the small cell image
+            # might bias things.
+            phase_min = numpy.quantile(self.field_image.phase, 0.05)
+            phase = autocontrast(
+                self.phase, min_value=phase_min, max_quantile=1.0)
+            mng_min, mng_max = numpy.quantile(
+                self.field_image.mng, [0.9, 0.999])
+            mng = autocontrast(
+                self.mng, min_value=mng_min, max_value=mng_max, min_range=1000)
+            dna_min, dna_max = numpy.quantile(
+                self.field_image.dna, [0.9, 0.999])
+            dna = autocontrast(
+                self.dna, min_value=dna_min, max_value=dna_max)
+
+            output = numpy.empty(
+                (phase.shape[0], phase.shape[1], 3), dtype=numpy.uint16)
+            output[:, :, :] = phase[:, :, numpy.newaxis]
+            output[:, :, 1] += mng
+            output[:, :, [0, 2]] += dna[:, :, numpy.newaxis]
+            output = numpy.clip(output, 0, 255).astype(numpy.uint8)
+
+            self._cached_composite = Image.fromarray(output)
+        return self._cached_composite
+
+    def _repr_svg_(self):
+        img_height, img_width = self.phase.shape
+
+        png = standard_b64encode(self._repr_png_()).decode()
+
+        if self.cell.field.cell_line.terminus == "N":
+            title = f"mNG::{self.cell.field.cell_line.gene_id}"
+        else:
+            title = f"{self.cell.field.cell_line.gene_id}::mNG"
+
+        svg = f'''
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            viewBox="0 -20 {img_width} {img_height+20}"
+            preserveAspectRatio="xMinYMin meet"
+            width="100%"
+            height="100%"
+            style="font-family: sans-serif; max-width: {img_width}px">
+            <image
+                width="{img_width}"
+                height="{img_height}"
+                xlink:href="data:image/png;base64,{png}"
+                />
+            <g>
+                <rect
+                    x="0"
+                    y="-17.5"
+                    width="{img_width}"
+                    height="20"
+                    fill="black"
+                    stroke="black"
+                    stroke-width="5"/>
+                <text
+                    x="10"
+                    y="-15"
+                    fill="white"
+                    text-anchor="left"
+                    style="font-size:15px; dominant-baseline: hanging; opacity: 0.5;">
+                    {title} field {self.cell.field.index} cell {self.cell.index}
+                </text>
+            </g>
+        </svg>
+        '''
+        return svg
+
     def _repr_png_(self):
-        phase = autocontrast(self.phase)
-        mng = autocontrast(self.mng)
-        dna = autocontrast(self.dna)
-
-        output = numpy.empty(
-            (phase.shape[0], phase.shape[1], 3), dtype=numpy.uint16)
-        output[:, :, :] = phase[:, :, numpy.newaxis]
-        output[:, :, 1] += mng
-        output[:, :, [0, 2]] += dna[:, :, numpy.newaxis]
-        output = numpy.clip(output, 0, 255).astype(numpy.uint8)
-
-        return _channel_to_png_bytes(output)
+        return self.composite()._repr_png_()
 
 
 class FieldImage():
@@ -588,10 +662,10 @@ class FieldImage():
             </g>
             """)
 
-        if cell.field.cell_line.terminus == "N":
-            title = f"mNG::{cell.field.cell_line.gene_id}"
+        if self.field.cell_line.terminus == "N":
+            title = f"mNG::{self.field.cell_line.gene_id}"
         else:
-            title = f"{cell.field.cell_line.gene_id}::mNG"
+            title = f"{self.field.cell_line.gene_id}::mNG"
 
         svg = f'''
         <svg
