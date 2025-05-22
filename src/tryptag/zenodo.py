@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 import hashlib
 import io
 import json
@@ -13,6 +14,30 @@ ZENODO_API_ROOT = "https://zenodo.org/api/records"
 DOWNLOAD_MAX_TRIES = 3
 
 logger = logging.getLogger("tryptag.datasource.zenodo")
+
+
+def log_progress(
+    name: str,
+    total_size: int,
+    block_size: int,
+    chunks: Sequence[bytes],
+):
+    if total_size == 0:
+        for chunk in chunks:
+            yield chunk
+    else:
+        progress = 0
+        delta = 0
+        for chunk in chunks:
+            delta += block_size
+            progress += block_size
+            delta_percentage = 100 * (delta / total_size)
+            if delta_percentage >= 10:
+                logger.debug(
+                    f"{name}: {progress} / {total_size}")
+                delta = 0
+            yield chunk
+        logger.debug(f"{name}: {total_size} / {total_size}")
 
 
 class ZenodoFileChecksumError(Exception):
@@ -47,7 +72,11 @@ class ZenodoFile:
         if md5.hexdigest() != self.checksum:
             raise ZenodoFileChecksumError
 
-    def download(self, outfile: io.BufferedIOBase):
+    def download(
+        self,
+        outfile: io.BufferedIOBase,
+        progress_position: int = 0,
+    ):
         """
         Download the file and write to the given file object.
 
@@ -62,33 +91,22 @@ class ZenodoFile:
 
             md5 = hashlib.md5()
 
-            def log_progress(chunks):
-                if total_size == 0:
-                    for chunk in chunks:
-                        yield chunk
-                else:
-                    progress = 0
-                    delta = 0
-                    for chunk in chunks:
-                        delta += block_size
-                        progress += block_size
-                        delta_percentage = 100 * (delta / total_size)
-                        if delta_percentage >= 10:
-                            logger.debug(
-                                f"{self.name}: {progress} / {total_size}")
-                            delta = 0
-                        yield chunk
-                    logger.debug(f"{self.name}: {total_size} / {total_size}")
-
             with tqdm(
                 desc=f"Downloading {self.name}",
                 total=total_size,
                 unit="B",
                 unit_scale=True,
                 disable=logger.getEffectiveLevel() != logging.INFO,
+                position=progress_position,
+                leave=progress_position == 0,
             ) as progress_bar:
                 progress_bar.n
-                for chunk in log_progress(r.iter_content(block_size)):
+                for chunk in log_progress(
+                    self.name,
+                    total_size,
+                    block_size,
+                    r.iter_content(block_size),
+                ):
                     progress_bar.update(len(chunk))
                     md5.update(chunk)
                     outfile.write(chunk)
@@ -112,6 +130,7 @@ class ZenodoRecord:
         :param data: dict, the Zenodo record information
         """
         self.doi = data["doi"]
+        self.original_doi = data["conceptdoi"]
         file_list = [ZenodoFile(f) for f in data["files"]]
         self.files = {f.name: f for f in file_list}
         self._original_data = data
@@ -258,7 +277,12 @@ class Zenodo(DataSource):
         with self.load_root_file("plate_doi_index.tsv") as plate_index:
             for line in plate_index:
                 doi, plate_id = line.split()
-                plates[plate_id] = int(doi.split(".")[-1])
+                # Don't include the master record!
+                if doi not in (
+                    self.master_record.doi,
+                    self.master_record.original_doi,  # Might have had update!
+                ):
+                    plates[plate_id] = doi.split(".")[-1]
         return plates
 
     def glob_plate_files(self, plate: str, pattern: str):
@@ -276,6 +300,86 @@ class Zenodo(DataSource):
             str(p.relative_to(plate)) for p in
             self.cache.glob_files(f"{plate}/{pattern}")
         ]
+
+    def fetch_plate_zip_file(
+        self,
+        plate: str,
+        raw: bool = False,
+        progress_position: int = 0,
+    ):
+        """
+        Fetch a plate's zip file and save it to the `zip` subfolder in the
+        cache directory. Fetches the processed data per default, the raw data
+        if `raw=True`. Checks if the file already exists and has a matching
+        MD5 hash before downloading.
+
+        :param plate: str, the name of the plate
+        :param raw: bool, whether to fetch the processed (`False`) or raw
+            (`True`) data (default `False`)
+        """
+        record_id = self.plate_index[plate]
+        record = self._load_or_fetch_record(record_id)
+
+        filename = f"{plate}{'' if raw else '_processed'}.zip"
+
+        zfile = record.files[filename]
+
+        path = self.cache.file_path("zip/" + filename)
+        if path.exists():
+            logger.debug(f"Zip file {path} exists - checking MD5.")
+            md5 = hashlib.md5()
+
+            total_size = path.stat().st_size
+            block_size = 8192
+
+            with (
+                tqdm(
+                    desc=f"Checking {filename}",
+                    total=total_size,
+                    unit="B",
+                    unit_scale=True,
+                    disable=logger.getEffectiveLevel() != logging.INFO,
+                    position=progress_position,
+                    leave=progress_position == 0,
+                ) as progress_bar,
+                path.open("rb") as f
+            ):
+                def chunks():
+                    while chunk := f.read(8192):
+                        yield chunk
+
+                for chunk in log_progress(
+                    filename,
+                    total_size,
+                    block_size,
+                    chunks(),
+                ):
+                    progress_bar.update(len(chunk))
+                    md5.update(chunk)
+
+            checksum = md5.hexdigest()
+            if checksum != zfile.checksum:
+                raise ValueError(
+                    f"Zip file {path} exists, but checksum is wrong! Please "
+                    "delete and retry.")
+        else:
+            with path.open("wb") as f:
+                zfile.download(f, progress_position=progress_position)
+
+    def fetch_all_zip_files(self, raw: bool = False):
+        """
+        Fetch all zip files. If `raw=False` (default) this fetches the
+        processed data, otherwise the raw unprocessed data is fetched.
+
+        :param raw: bool, whether to fetch the processed (`False`) or raw
+            (`True`) data (default `False`)
+        """
+        for plate in tqdm(
+            list(self.plate_index),
+            desc="Downloading zip files",
+            disable=logger.getEffectiveLevel() != logging.INFO,
+        ):
+            self.fetch_plate_zip_file(plate, raw=raw, progress_position=1)
 
     def __hash__(self):
         return hash(("datasource", "zenodo", self.cache))
