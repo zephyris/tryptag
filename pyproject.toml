@@ -15,6 +15,7 @@ dependencies = [
 	"numpy",
 	"scikit-image",
 	"Pillow",
+	"tifffile",
 	"tqdm",
 	"types-tqdm",
 	"filelock",

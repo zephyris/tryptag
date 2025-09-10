@@ -7,6 +7,7 @@ import weakref
 import numpy
 import skimage
 from PIL import Image
+import tifffile
 
 from .cache import FileTypes
 from .datasource import Field, Cell, CellLine, DataSource
@@ -313,6 +314,9 @@ class FieldImage():
         dna_mask: numpy.ndarray | None = None,
         cell_line: CellLine | None = None,
         field_index: int | None = None,
+        phase_contrast: (int, int) | None = None,
+        mng_contrast: (int, int) | None = None,
+        dna_contrast: (int, int) | None = None
     ):
         """
         Initialise a new FieldImage object.
@@ -401,10 +405,22 @@ class FieldImage():
             self.field.filename(FileTypes.IMAGE),
             return_file_object=False,
         )
-        field_image = skimage.io.imread(img_path)
-        # MAGIC NUMBER: correct loading in a weird order
-        field_image = numpy.moveaxis(field_image, [0, 1, 2], [1, 2, 0])
-        return field_image
+        tif = tifffile.TiffFile(img_path)
+        try:
+            channel_contrast = tif.imagej_metadata["Ranges"]
+            contrast = {
+                "phase": (channel_contrast[0], channel_contrast[1]),
+                "mng": (channel_contrast[2], channel_contrast[3]),
+                "dna": (channel_contrast[4], channel_contrast[5]),
+            }
+        except:
+            contrast = None
+        field_image = [
+            tif.asarray(0),
+            tif.asarray(1),
+            tif.asarray(2),
+        ]
+        return field_image, contrast
 
     def _open_thresholded(
         self,
@@ -429,7 +445,7 @@ class FieldImage():
             datasource: DataSource,
             custom_field_image: FieldImage | None = None
     ):
-        image = self._open_image(datasource)
+        image, contrast = self._open_image(datasource)
         thresholded = self._open_thresholded(datasource)
 
         # setup output, copying images as downstream usage may modify
@@ -438,6 +454,9 @@ class FieldImage():
         self.dna = image[2].astype("uint16", copy=True).view(Channel)
         self.phase_mask = thresholded[0].astype("uint8", copy=True).view(Channel)
         self.dna_mask = thresholded[1].astype("uint8", copy=True).view(Channel)
+        self.phase_contrast = contrast.get("phase") if contrast else None
+        self.mng_contrast = contrast.get("mng") if contrast else None
+        self.dna_contrast = contrast.get("dna") if contrast else None
 
         if custom_field_image is not None:
             self.update(custom_field_image)
