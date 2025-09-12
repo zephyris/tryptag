@@ -136,7 +136,10 @@ class CellImage():
 
         channels_iterator = itertools.chain(
             field_image.iter_images(copy=True),
-            [("phase_mask_othercells", phase_mask_othercells)]
+            [
+                ("phase_mask", phase_mask),  # Overwrite the original phase mask
+                ("phase_mask_othercells", phase_mask_othercells)
+            ]
         )
         # crop (and potentially rotate) to get cell image
         cell_channels: dict[str, numpy.ndarray] = {}
