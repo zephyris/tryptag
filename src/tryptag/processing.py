@@ -15,6 +15,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tryptag.processing")
 
 
+_tryptag_object: TrypTag | None = None
+def _list_analysis_worker_processes_init(tryptag: TrypTag):
+    global _tryptag_object
+    _tryptag_object = tryptag
+
+
+def _list_analysis_worker_processes(
+    cell_line: CellLine,
+    analysis_function: Callable,
+):
+    result = {
+        # Give a shallow copy of the CellLine object only!
+        # If the analysis function populates the CellLine, Field, Cell
+        # objects, etc., the multiprocessing pickles the whole object
+        # hierarchy which leads to very slow processing and a giant
+        # memory leak in the parent process.
+        "cell_line": CellLine(cell_line.gene_id, cell_line.terminus),
+        "result": analysis_function(
+            _tryptag_object,
+            _tryptag_object.gene_list[cell_line.gene_id][cell_line.terminus],
+        ),
+    }
+    return result
+
+
 class WorkList(Sequence[CellLine]):
     """
     Class holding a list of `CellLine`s.
@@ -145,7 +170,7 @@ class WorkList(Sequence[CellLine]):
             )
         )
 
-    def _list_analysis_worker(
+    def _list_analysis_worker_thread(
         self,
         cell_line: CellLine,
         analysis_function: Callable,
@@ -191,26 +216,39 @@ class WorkList(Sequence[CellLine]):
             # run in a single thread, still use the ThreadPoolExecutor since
             # that's equivalent
             logger.debug("Single process")
-            Executor = concurrent.futures.ThreadPoolExecutor
-            workers = 1
+            executor = concurrent.futures.ThreadPoolExecutor(1)
         elif multiprocess_mode == "process":
             # setup executor as a process pool
             logger.debug(f"Parallel processes with {workers} workers")
-            Executor = concurrent.futures.ProcessPoolExecutor
+            executor = concurrent.futures.ProcessPoolExecutor(
+                workers,
+                initializer=_list_analysis_worker_processes_init,
+                initargs=(self.tryptag,)
+            )
         elif multiprocess_mode == "thread":
             # setup executor as a thread pool
             logger.debug("Parallel threads with", workers, "workers")
-            Executor = concurrent.futures.ThreadPoolExecutor
+            executor = concurrent.futures.ThreadPoolExecutor(workers)
         else:
             raise ValueError(f"Unknown multiprocess_mode '{multiprocess_mode}")
 
-        with Executor(workers) as executor:
-            futures = [
-                executor.submit(
-                    self._list_analysis_worker,
-                    cell_line=cell_line,
-                    analysis_function=analysis_function,
-                ) for cell_line in self]
+        with executor:
+            if multiprocess_mode == "process":
+                futures = [
+                    executor.submit(
+                        _list_analysis_worker_processes,
+                        cell_line=CellLine(cell_line.gene_id, cell_line.terminus),
+                        analysis_function=analysis_function,
+                    ) for cell_line in self
+                ]
+            else:
+                futures = [
+                    executor.submit(
+                        self._list_analysis_worker_thread,
+                        cell_line=cell_line,
+                        analysis_function=analysis_function,
+                    ) for cell_line in self
+                ]
             results = []
             total = len(futures)
             for nr, future in enumerate(tqdm(
