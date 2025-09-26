@@ -2,6 +2,7 @@ from __future__ import annotations
 import io
 import itertools
 import logging
+from typing import NamedTuple
 import weakref
 
 import numpy
@@ -281,6 +282,11 @@ class CellImage():
         return _channel_to_png_bytes(output)
 
 
+class ContrastRange(NamedTuple):
+    minimum: float
+    maximum: float
+
+
 class FieldImage():
     """
     FieldImage object holding a TrypTag image belonging to a CellLine.
@@ -298,6 +304,10 @@ class FieldImage():
     dna: Channel | None = None
     phase_mask: Channel | None = None
     dna_mask: Channel | None = None
+
+    phase_contrast: ContrastRange | None = None
+    mng_contrast: ContrastRange | None = None
+    dna_contrast: ContrastRange | None = None
 
     cell_line: CellLine | None = None
     field: Field | None = None
@@ -317,9 +327,9 @@ class FieldImage():
         dna_mask: numpy.ndarray | None = None,
         cell_line: CellLine | None = None,
         field_index: int | None = None,
-        phase_contrast: (int, int) | None = None,
-        mng_contrast: (int, int) | None = None,
-        dna_contrast: (int, int) | None = None
+        phase_contrast: ContrastRange | None = None,
+        mng_contrast: ContrastRange | None = None,
+        dna_contrast: ContrastRange | None = None
     ):
         """
         Initialise a new FieldImage object.
@@ -343,6 +353,11 @@ class FieldImage():
             phase_mask.view(Channel) if phase_mask is not None else None)
         self.dna_mask = (
             dna_mask.view(Channel) if dna_mask is not None else None)
+        
+        self.phase_contrast = phase_contrast
+        self.mng_contrast = mng_contrast
+        self.dna_contrast = dna_contrast
+
         if (cell_line is None) != (field_index is None):
             raise ValueError("need to specify both cell_line and field_index")
         elif cell_line is not None:
@@ -409,15 +424,20 @@ class FieldImage():
             return_file_object=False,
         )
         tif = tifffile.TiffFile(img_path)
+        contrast: dict[str, ContrastRange | None]
         try:
             channel_contrast = tif.imagej_metadata["Ranges"]
             contrast = {
-                "phase": (channel_contrast[0], channel_contrast[1]),
-                "mng": (channel_contrast[2], channel_contrast[3]),
-                "dna": (channel_contrast[4], channel_contrast[5]),
+                "phase": ContrastRange(channel_contrast[0], channel_contrast[1]),
+                "mng": ContrastRange(channel_contrast[2], channel_contrast[3]),
+                "dna": ContrastRange(channel_contrast[4], channel_contrast[5]),
             }
         except:
-            contrast = None
+            contrast = {
+                "phase": None,
+                "mng": None,
+                "dna": None,
+            }
         field_image = [
             tif.asarray(0),
             tif.asarray(1),
@@ -457,9 +477,9 @@ class FieldImage():
         self.dna = image[2].astype("uint16", copy=True).view(Channel)
         self.phase_mask = thresholded[0].astype("uint8", copy=True).view(Channel)
         self.dna_mask = thresholded[1].astype("uint8", copy=True).view(Channel)
-        self.phase_contrast = contrast.get("phase") if contrast else None
-        self.mng_contrast = contrast.get("mng") if contrast else None
-        self.dna_contrast = contrast.get("dna") if contrast else None
+        self.phase_contrast = contrast["phase"]
+        self.mng_contrast = contrast["mng"]
+        self.dna_contrast = contrast["dna"]
 
         if custom_field_image is not None:
             self.update(custom_field_image)
