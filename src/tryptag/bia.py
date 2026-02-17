@@ -14,7 +14,7 @@ from tryptag.datasource import DataSource
 
 logger = logging.getLogger("tryptag.bia")
 
-BIA_API_ROOT = "https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BIAD"
+BIA_API_ROOT = "https://ftp.ebi.ac.uk/biostudies/fire/S-BIAD/"
 DOWNLOAD_MAX_TRIES = 3
 
 FILE_TYPES = {
