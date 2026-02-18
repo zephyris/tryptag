@@ -1,8 +1,9 @@
 from __future__ import annotations
-from collections.abc import Callable, Sequence
+
 import concurrent.futures
 import logging
 import multiprocessing
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Literal
 
 from tqdm import tqdm
@@ -60,7 +61,11 @@ class WorkList(Sequence[CellLine]):
         :param cell_line_list: A list of `CellLine` objects to include.
         """
         self.tryptag = tryptag
-        self._cell_lines = list(set(cell_line_list))
+        initialised_cell_lines = {
+            tryptag.gene_list[cell_line.gene_id][cell_line.terminus]
+            for cell_line in cell_line_list
+        }
+        self._cell_lines = list(initialised_cell_lines)
 
     def __len__(self):
         return len(self._cell_lines)
