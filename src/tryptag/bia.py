@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import fnmatch
 import io
 import json
 import logging
 import pathlib
+import shutil
+import tempfile
 from typing import Literal
 
 import requests
@@ -149,13 +152,11 @@ class BioimageArchive(DataSource):
         logger.debug(f"Fetching root file {filename}.")
         biafile = self._file_index[filename]
         filepath = self.cache.file_path(biafile.path)
-        outfile = filepath.open("wb")
-        try:
-            with outfile:
-                biafile.download(outfile)
-        except Exception:
-            filepath.unlink(missing_ok=True)
-            raise
+        with tempfile.TemporaryFile() as tmpfile:
+            biafile.download(tmpfile)
+            tmpfile.seek(0)
+            with filepath.open("wb") as outfile:
+                shutil.copyfileobj(tmpfile, outfile)
 
     def fetch_plate_file(self, plate, filename):
         self.fetch_root_file(f"{plate}/{filename}")
