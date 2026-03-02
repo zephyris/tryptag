@@ -1,23 +1,20 @@
 from __future__ import annotations
-from collections.abc import Mapping
+
 import csv
-from dataclasses import dataclass
-from functools import cached_property
 import json
 import logging
 import os
 import pathlib
 import sys
-from typing import Literal
 import warnings
+from collections.abc import Mapping
+from dataclasses import dataclass
+from functools import cached_property
+from typing import Literal
 
-from .cache import Cache, FileTypes, FILE_PATTERN
+from annotations import Ontology, OntologyAnnotationCollection, OntologyEntry
 
-from annotations import (
-    Ontology,
-    OntologyEntry,
-    OntologyAnnotationCollection,
-)
+from .cache import FILE_PATTERN, Cache, FileTypes
 
 if sys.version_info >= (3, 11):
     from enum import StrEnum
@@ -376,8 +373,12 @@ class CellLine:
         return self
 
     def __hash__(self):
+        if self.initialised:
+            datasource = self.datasource
+        else:
+            datasource = None
         return hash(
-            (self.datasource, self.gene.id, self.terminus, self.life_stage))
+            (datasource, self.gene.id, self.terminus, self.life_stage))
 
     def __eq__(self, other: CellLine):
         return (
