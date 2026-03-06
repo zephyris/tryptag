@@ -7,6 +7,7 @@ import logging
 import pathlib
 import shutil
 import tempfile
+import time
 from typing import Literal
 
 import requests
@@ -105,8 +106,6 @@ class BiaFile:
                     yield chunk
                 logger.debug(f"{self.path}: {total_size} / {total_size}")
 
-        # TODO: check downloaded file size!
-
         with tqdm(
             desc=f"Downloading {self.path}",
             total=total_size,
@@ -152,11 +151,23 @@ class BioimageArchive(DataSource):
         logger.debug(f"Fetching root file {filename}.")
         biafile = self._file_index[filename]
         filepath = self.cache.file_path(biafile.path)
-        with tempfile.TemporaryFile() as tmpfile:
-            biafile.download(tmpfile)
-            tmpfile.seek(0)
-            with filepath.open("wb") as outfile:
-                shutil.copyfileobj(tmpfile, outfile)
+        error = None
+        for retry in range(5):
+            time.sleep(2**retry-1)
+            try:
+                with tempfile.TemporaryFile() as tmpfile:
+                    biafile.download(tmpfile)
+                    tmpfile.seek(0)
+                    with filepath.open("wb") as outfile:
+                        shutil.copyfileobj(tmpfile, outfile)
+                break
+            except Exception as e:
+                logger.warning(f"Problem downloading {filename}, retry {retry+1} of 5 failed. Error was: {e.__class__.__name__} - {e}.")
+                error = e
+                pass
+        else:
+            logger.warning(f"Problem downloading {filename}, and all retries failed, giving up.")
+            raise error
 
     def fetch_plate_file(self, plate, filename):
         self.fetch_root_file(f"{plate}/{filename}")
