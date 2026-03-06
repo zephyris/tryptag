@@ -115,6 +115,8 @@ class Cell:
         self.extent = extent
         self.angle = angle
 
+        self.bounding_box: tuple[int, int, int, int] | None = None
+
     @staticmethod
     def from_line(field: Field, line: str):
         """
