@@ -177,16 +177,17 @@ class Cache:
             dir=tempdir,
         )
 
-    def lock_file_name(self, item: str):
+    def lock_file_name(self, item: str, timeout=30):
         """
         Return the lock object for an item.
 
         :param item: str, name of the item to be locked
+        :param timeout: int, seconds to wait until raising a Timeout Error
         :return: FileLock object
         """
         path = self.root / "lock"
         path.mkdir(exist_ok=True)
-        return FileLock(path / item)
+        return FileLock(path / item, timeout=timeout)
 
     def extract_plate_zip(self, plate: str, zipfilepath: pathlib.Path):
         """
