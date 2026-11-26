@@ -1,8 +1,15 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
 import hashlib
 import io
 import json
 import logging
+import os
+import pathlib
+import random
+import tempfile
+import time
 import typing
 import requests
 from tqdm import tqdm
@@ -11,7 +18,9 @@ from tryptag.cache import Cache
 from tryptag.datasource import DataSource
 
 ZENODO_API_ROOT = "https://zenodo.org/api/records"
-DOWNLOAD_MAX_TRIES = 3
+DOWNLOAD_MAX_TRIES = 5
+DOWNLOAD_TIMEOUT: tuple[float, float] = (30.0, 60.0)
+DOWNLOAD_BLOCK_SIZE = 65536
 
 logger = logging.getLogger("tryptag.datasource.zenodo")
 
@@ -29,15 +38,16 @@ def log_progress(
         progress = 0
         delta = 0
         for chunk in chunks:
-            delta += block_size
-            progress += block_size
+            chunk_len = len(chunk)
+            delta += chunk_len
+            progress += chunk_len
             delta_percentage = 100 * (delta / total_size)
             if delta_percentage >= 10:
                 logger.debug(
                     f"{name}: {progress} / {total_size}")
                 delta = 0
             yield chunk
-        logger.debug(f"{name}: {total_size} / {total_size}")
+        logger.debug(f"{name}: {progress} / {total_size}")
 
 
 class ZenodoFileChecksumError(Exception):
@@ -61,16 +71,20 @@ class ZenodoFile:
         """
         Fetch the file from Zenodo via HTTP and return a line iterator
         """
-        r = requests.get(self.url, stream=True)
+        with requests.get(
+            self.url,
+            stream=True,
+            timeout=DOWNLOAD_TIMEOUT,
+        ) as r:
+            r.raise_for_status()
+            md5 = hashlib.md5()
 
-        md5 = hashlib.md5()
+            for line in r.iter_lines():
+                md5.update(line + b"\n")
+                yield line
 
-        for line in r.iter_lines():
-            md5.update(line + b"\n")
-            yield line
-
-        if md5.hexdigest() != self.checksum:
-            raise ZenodoFileChecksumError
+            if md5.hexdigest() != self.checksum:
+                raise ZenodoFileChecksumError
 
     def download(
         self,
@@ -84,41 +98,78 @@ class ZenodoFile:
             written to.
         """
         logger.debug(f"Downloading {self.name} from URL {self.url}.")
-        for try_nr in range(DOWNLOAD_MAX_TRIES):
-            r = requests.get(self.url, stream=True)
-            total_size = int(r.headers.get("content-length", 0))
-            block_size = 1024
+        last_error: Exception | None = None
+        for try_nr in range(1, DOWNLOAD_MAX_TRIES + 1):
+            if outfile.seekable():
+                outfile.seek(0)
+                outfile.truncate()
+            try:
+                with requests.get(
+                    self.url,
+                    stream=True,
+                    timeout=DOWNLOAD_TIMEOUT,
+                ) as r:
+                    r.raise_for_status()
+                    total_size = int(r.headers.get("content-length", 0))
+                    block_size = DOWNLOAD_BLOCK_SIZE
 
-            md5 = hashlib.md5()
+                    md5 = hashlib.md5()
 
-            with tqdm(
-                desc=f"Downloading {self.name}",
-                total=total_size,
-                unit="B",
-                unit_scale=True,
-                disable=logger.getEffectiveLevel() != logging.INFO,
-                position=progress_position,
-                leave=progress_position == 0,
-            ) as progress_bar:
-                progress_bar.n
-                for chunk in log_progress(
-                    self.name,
-                    total_size,
-                    block_size,
-                    r.iter_content(block_size),
+                    with tqdm(
+                        desc=f"Downloading {self.name}",
+                        total=total_size,
+                        unit="B",
+                        unit_scale=True,
+                        disable=logger.getEffectiveLevel() != logging.INFO,
+                        position=progress_position,
+                        leave=progress_position == 0,
+                    ) as progress_bar:
+                        for chunk in log_progress(
+                            self.name,
+                            total_size,
+                            block_size,
+                            r.iter_content(block_size),
+                        ):
+                            if not chunk:
+                                continue
+                            progress_bar.update(len(chunk))
+                            md5.update(chunk)
+                            outfile.write(chunk)
+
+                if self.checksum == md5.hexdigest():
+                    return
+                last_error = ZenodoFileChecksumError(
+                    f"Checksum mismatch for {self.name}: expected "
+                    f"{self.checksum}, got {md5.hexdigest()}."
+                )
+            except (requests.exceptions.RequestException, OSError) as e:
+                if (
+                    isinstance(e, requests.exceptions.HTTPError)
+                    and e.response is not None
+                    and 400 <= e.response.status_code < 500
+                    and e.response.status_code not in (403, 408, 429)
                 ):
-                    progress_bar.update(len(chunk))
-                    md5.update(chunk)
-                    outfile.write(chunk)
+                    logger.warning(
+                        f"Non-retryable error downloading {self.name} from "
+                        f"{self.url}: {e.__class__.__name__} - {e}."
+                    )
+                    raise
+                last_error = e
 
-            if self.checksum == md5.hexdigest():
-                break
-            logger.warning(f"Downloading file {self.name} from {self.url} "
-                           "failed {try_nr+1} times.")
-        else:
-            raise ValueError(f"Downloading file {self.name} from {self.url} "
-                             "failed and we reached the max number of "
-                             "retries.")
+            if try_nr < DOWNLOAD_MAX_TRIES:
+                delay = float(2 ** (try_nr - 1)) * random.uniform(0.5, 1.5)
+                logger.warning(
+                    f"Downloading file {self.name} from {self.url} failed on "
+                    f"attempt {try_nr} of {DOWNLOAD_MAX_TRIES} "
+                    f"({last_error.__class__.__name__} - {last_error}). "
+                    f"Retrying in {delay:.1f}s."
+                )
+                time.sleep(delay)
+
+        raise ValueError(
+            f"Downloading file {self.name} from {self.url} failed after "
+            f"{DOWNLOAD_MAX_TRIES} attempts: {last_error}"
+        ) from last_error
 
 
 class ZenodoRecord:
@@ -143,10 +194,12 @@ class ZenodoRecord:
         :param record_id: int, ID of the record
         :return: the initialised `ZenodoRecord` object.
         """
-        logger.debug("Fetching record {record_id}.")
+        logger.debug(f"Fetching record {record_id}.")
         r = requests.get(
-            f"{ZENODO_API_ROOT}/{record_id}/versions/latest"
+            f"{ZENODO_API_ROOT}/{record_id}/versions/latest",
+            timeout=DOWNLOAD_TIMEOUT,
         )
+        r.raise_for_status()
         return ZenodoRecord(r.json())
 
     @staticmethod
@@ -220,6 +273,33 @@ class Zenodo(DataSource):
                 )
             )
 
+    @staticmethod
+    def _download_atomic(
+        zfile: ZenodoFile,
+        filepath: pathlib.Path,
+        progress_position: int = 0,
+    ):
+        tmp_path: pathlib.Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=filepath.parent,
+                prefix=f".{filepath.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmpfile:
+                tmp_path = pathlib.Path(tmpfile.name)
+                zfile.download(tmpfile, progress_position=progress_position)
+                tmpfile.flush()
+            os.replace(tmp_path, filepath)
+            tmp_path = None
+        finally:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
     def fetch_root_file(self, filename: str):
         """
         Low-level fetching of a root (non-plate) file.
@@ -231,8 +311,7 @@ class Zenodo(DataSource):
         """
         logger.debug(f"Fetching root file {filename}.")
         zfile = self.master_record.files[filename]
-        with open(self.cache.file_path(filename), "wb") as outfile:
-            zfile.download(outfile)
+        self._download_atomic(zfile, self.cache.file_path(filename))
 
     def fetch_plate_file(self, plate: str, file: str):
         """
@@ -363,8 +442,8 @@ class Zenodo(DataSource):
                     f"Zip file {path} exists, but checksum is wrong! Please "
                     "delete and retry.")
         else:
-            with path.open("wb") as f:
-                zfile.download(f, progress_position=progress_position)
+            self._download_atomic(
+                zfile, path, progress_position=progress_position)
 
     def fetch_all_zip_files(self, raw: bool = False):
         """

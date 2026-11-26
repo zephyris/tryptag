@@ -4,8 +4,9 @@ import fnmatch
 import io
 import json
 import logging
+import os
 import pathlib
-import shutil
+import random
 import tempfile
 import time
 from typing import Literal
@@ -19,7 +20,9 @@ from tryptag.datasource import DataSource
 logger = logging.getLogger("tryptag.bia")
 
 BIA_API_ROOT = "https://ftp.ebi.ac.uk/biostudies/fire/S-BIAD/"
-DOWNLOAD_MAX_TRIES = 3
+DOWNLOAD_MAX_TRIES = 5
+DOWNLOAD_TIMEOUT: tuple[float, float] = (30.0, 60.0)
+DOWNLOAD_BLOCK_SIZE = 65536
 
 FILE_TYPES = {
     "Cell ROIs": FileTypes.CELL_ROIS,
@@ -34,6 +37,23 @@ class BIANotAvailableError(Exception):
     def __init__(self):
         super().__init__("Connection problem to BioImage Archive, please try "
                          "again later.")
+
+
+class IncompleteDownloadError(OSError):
+    """Raised when a streamed download terminates before all expected bytes
+    are received."""
+    pass
+
+
+def _is_permanent_http_error(exc: Exception) -> bool:
+    """Return True for non-retryable 4xx HTTP errors (excluding transient
+    403/408/429 responses)."""
+    return (
+        isinstance(exc, requests.exceptions.HTTPError)
+        and exc.response is not None
+        and 400 <= exc.response.status_code < 500
+        and exc.response.status_code not in (403, 408, 429)
+    )
 
 
 class BiaFile:
@@ -67,7 +87,7 @@ class BiaFile:
 
     def download(
         self,
-        outfile: io.BufferedIOBase
+        outfile: io.BufferedIOBase,
     ):
         """
         Download the file from BIA and write to the given file object.
@@ -77,45 +97,75 @@ class BiaFile:
         """
 
         logger.debug(f"Downloading {self.path} from URL {self.url}.")
-        r = requests.get(
+        with requests.get(
             self.url,
             stream=True,
             headers={
                 "Accept-Encoding": "gzip",
-            }
-        )
-        r.raise_for_status()
-        total_size = int(r.headers.get("content-length", 0))
-        block_size = 1024
-
-        def log_progress(chunks):
-            if total_size == 0:
-                for chunk in chunks:
-                    yield chunk
+            },
+            timeout=DOWNLOAD_TIMEOUT,
+        ) as r:
+            r.raise_for_status()
+            content_length = int(r.headers.get("content-length", 0))
+            content_encoding = r.headers.get("content-encoding", "").lower()
+            is_compressed = content_encoding not in ("", "identity")
+            if self.size > 0:
+                total_size = self.size
+            elif not is_compressed:
+                total_size = content_length
             else:
-                progress = 0
-                delta = 0
-                for chunk in chunks:
-                    delta += block_size
-                    progress += block_size
-                    delta_percentage = 100 * (delta / total_size)
-                    if delta_percentage >= 10:
-                        logger.debug(
-                            f"{self.path}: {progress} / {total_size}")
-                        delta = 0
-                    yield chunk
-                logger.debug(f"{self.path}: {total_size} / {total_size}")
+                total_size = 0
 
-        with tqdm(
-            desc=f"Downloading {self.path}",
-            total=total_size,
-            unit="B",
-            unit_scale=True,
-            disable=logger.getEffectiveLevel() != logging.INFO,
-        ) as progress_bar:
-            for chunk in log_progress(r.iter_content(block_size)):
-                progress_bar.update(len(chunk))
-                outfile.write(chunk)
+            def log_progress(chunks):
+                if total_size == 0:
+                    for chunk in chunks:
+                        yield chunk
+                else:
+                    progress = 0
+                    delta = 0
+                    for chunk in chunks:
+                        chunk_len = len(chunk)
+                        delta += chunk_len
+                        progress += chunk_len
+                        delta_percentage = 100 * (delta / total_size)
+                        if delta_percentage >= 10:
+                            logger.debug(
+                                f"{self.path}: {progress} / {total_size}")
+                            delta = 0
+                        yield chunk
+                    logger.debug(f"{self.path}: {progress} / {total_size}")
+
+            bytes_written = 0
+            with tqdm(
+                desc=f"Downloading {self.path}",
+                total=total_size,
+                unit="B",
+                unit_scale=True,
+                disable=logger.getEffectiveLevel() != logging.INFO,
+            ) as progress_bar:
+                for chunk in log_progress(r.iter_content(DOWNLOAD_BLOCK_SIZE)):
+                    if not chunk:
+                        continue
+                    chunk_len = len(chunk)
+                    bytes_written += chunk_len
+                    progress_bar.update(chunk_len)
+                    outfile.write(chunk)
+
+        if self.size > 0 and bytes_written != self.size:
+            raise IncompleteDownloadError(
+                f"Incomplete download for {self.path}: received "
+                f"{bytes_written} of {self.size} expected bytes."
+            )
+        if (
+            self.size <= 0
+            and not is_compressed
+            and content_length > 0
+            and bytes_written != content_length
+        ):
+            raise IncompleteDownloadError(
+                f"Incomplete download for {self.path}: received "
+                f"{bytes_written} of {content_length} expected bytes."
+            )
 
 
 class BioimageArchive(DataSource):
@@ -151,23 +201,48 @@ class BioimageArchive(DataSource):
         logger.debug(f"Fetching root file {filename}.")
         biafile = self._file_index[filename]
         filepath = self.cache.file_path(biafile.path)
-        error = None
-        for retry in range(5):
-            time.sleep(2**retry-1)
+        for attempt in range(1, DOWNLOAD_MAX_TRIES + 1):
+            tmp_path: pathlib.Path | None = None
             try:
-                with tempfile.TemporaryFile() as tmpfile:
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    dir=filepath.parent,
+                    prefix=f".{filepath.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as tmpfile:
+                    tmp_path = pathlib.Path(tmpfile.name)
                     biafile.download(tmpfile)
-                    tmpfile.seek(0)
-                    with filepath.open("wb") as outfile:
-                        shutil.copyfileobj(tmpfile, outfile)
-                break
-            except Exception as e:
-                logger.warning(f"Problem downloading {filename}, retry {retry+1} of 5 failed. Error was: {e.__class__.__name__} - {e}.")
-                error = e
-                pass
-        else:
-            logger.warning(f"Problem downloading {filename}, and all retries failed, giving up.")
-            raise error
+                    tmpfile.flush()
+                os.replace(tmp_path, filepath)
+                tmp_path = None
+                return
+            except (requests.exceptions.RequestException, OSError) as e:
+                if _is_permanent_http_error(e):
+                    logger.warning(
+                        f"Non-retryable error downloading {filename}: "
+                        f"{e.__class__.__name__} - {e}."
+                    )
+                    raise
+                if attempt >= DOWNLOAD_MAX_TRIES:
+                    logger.warning(
+                        f"Problem downloading {filename}, all "
+                        f"{DOWNLOAD_MAX_TRIES} attempts failed, giving up."
+                    )
+                    raise
+                delay = float(2 ** (attempt - 1)) * random.uniform(0.5, 1.5)
+                logger.warning(
+                    f"Problem downloading {filename}, attempt {attempt} of "
+                    f"{DOWNLOAD_MAX_TRIES} failed ({e.__class__.__name__} - "
+                    f"{e}). Retrying in {delay:.1f}s."
+                )
+                time.sleep(delay)
+            finally:
+                if tmp_path is not None:
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
 
     def fetch_plate_file(self, plate, filename):
         self.fetch_root_file(f"{plate}/{filename}")
